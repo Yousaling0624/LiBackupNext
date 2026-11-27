@@ -13,6 +13,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -20,6 +21,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -34,6 +36,7 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.unit.dp
 import com.cc.libackupnext.BuildConfig
 import com.cc.libackupnext.data.RemoteRepo
+import com.cc.libackupnext.service.gateway.AlistInstallState
 import com.cc.libackupnext.service.gateway.AlistState
 import com.cc.libackupnext.ui.AppTopBar
 import com.cc.libackupnext.ui.component.CardGroup
@@ -42,7 +45,7 @@ import com.cc.libackupnext.ui.di.LocalAlist
 import com.cc.libackupnext.util.AppLog
 import kotlinx.coroutines.launch
 
-/** 状态给列表 / 设置页显示的一句话。 */
+/** 服务状态给列表 / 设置页显示的一句话。 */
 internal fun AlistState.describe(port: Int): String = when (this) {
     AlistState.Stopped -> "未启用"
     AlistState.Starting -> "正在启动…"
@@ -50,17 +53,37 @@ internal fun AlistState.describe(port: Int): String = when (this) {
     is AlistState.Failed -> "启动失败：$message"
 }
 
+/** 内核安装状态的一句话。 */
+private fun AlistInstallState.describeKernel(): String = when (this) {
+    AlistInstallState.Missing -> "未下载 · 约 60MB"
+    is AlistInstallState.Downloading -> {
+        if (total > 0) {
+            val percent = (downloaded * 100 / total).toInt()
+            "正在下载 $percent%（${downloaded / 1024 / 1024}MB / ${total / 1024 / 1024}MB）"
+        } else {
+            "正在下载…（${downloaded / 1024 / 1024}MB）"
+        }
+    }
+
+    AlistInstallState.Extracting -> "正在解压内核…"
+    is AlistInstallState.Ready -> "已就绪 · OpenList $version"
+    is AlistInstallState.Failed -> "不可用：$message"
+}
+
 /**
  * 内置 AList 管理页：启停服务、查看 WebDAV 凭据、打开 AList 网页配置网盘、
  * 一键用当前凭据预填一个 WebDAV 仓库。
  *
  * 页面本身不碰进程和密码的存储：都走 [com.cc.libackupnext.service.gateway.AlistGateway]。
+ * OpenList 内核不再随 APK 提供，第一次启用时按需下载。
  */
 @Composable
 fun AlistScreen(
     onBack: () -> Unit,
     /** 打开内嵌网页（AList 管理界面）。 */
     onOpenWeb: () -> Unit,
+    /** 打开夸克网盘登录页（登录后自动添加存储）。 */
+    onOpenQuarkLogin: () -> Unit,
     /** 用户点了「新建 WebDAV 仓库」，带着预填好地址 / 账号的表单跳去仓库页。 */
     onCreateRepo: (RemoteRepo) -> Unit,
     modifier: Modifier = Modifier
@@ -69,6 +92,7 @@ fun AlistScreen(
     val clipboard = LocalClipboard.current
     val alist = LocalAlist.current
     val state by alist.state.collectAsState()
+    val installState by alist.installState.collectAsState()
 
     // 开关的本地态：服务层只暴露「用户意图」，setEnabled 是异步的，
     // 界面不能等状态流回来才动 Switch，否则点一下会回弹
@@ -76,6 +100,7 @@ fun AlistScreen(
     var showPassword by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var actionError by remember { mutableStateOf<String?>(null) }
+    var showDownloadDialog by remember { mutableStateOf(false) }
 
     val pageBackground = MaterialTheme.colorScheme.surfaceContainer
     val searchBarBackground = MaterialTheme.colorScheme.surfaceContainerHighest
@@ -104,6 +129,19 @@ fun AlistScreen(
                     action()
                 }
                 .onFailure { actionError = it.message ?: "启动失败" }
+        }
+    }
+
+    /** 内核卡片：没下载 / 下载失败时点一下重试；下载中的进度在副标题里。 */
+    fun installKernel() {
+        if (installState is AlistInstallState.Downloading ||
+            installState is AlistInstallState.Extracting
+        ) {
+            return
+        }
+        scope.launch {
+            actionError = null
+            alist.ensureInstalled()
         }
     }
 
@@ -152,19 +190,47 @@ fun AlistScreen(
                     SettingsCard(
                         shape = shape,
                         title = "内置 AList 服务",
-                        subtitle = state.describe(alist.port),
+                        subtitle = when (val install = installState) {
+                            is AlistInstallState.Downloading -> "正在下载内核…"
+                            AlistInstallState.Extracting -> "正在解压内核…"
+                            is AlistInstallState.Failed -> "内核不可用"
+                            else -> state.describe(alist.port)
+                        },
                         hint = "只监听 127.0.0.1，不会暴露到局域网",
                         trailing = {
                             Switch(
                                 checked = enabled,
                                 onCheckedChange = { next ->
                                     if (!busy) {
-                                        enabled = next
-                                        actionError = null
-                                        alist.setEnabled(next)
+                                        if (next && installState !is AlistInstallState.Ready) {
+                                            showDownloadDialog = true
+                                        } else {
+                                            enabled = next
+                                            actionError = null
+                                            alist.setEnabled(next)
+                                        }
                                     }
                                 }
                             )
+                        }
+                    )
+                },
+                { shape ->
+                    val canInstall = installState is AlistInstallState.Missing ||
+                            installState is AlistInstallState.Failed
+                    SettingsCard(
+                        shape = shape,
+                        title = "AList 内核",
+                        subtitle = installState.describeKernel(),
+                        hint = when (installState) {
+                            is AlistInstallState.Failed -> "点此重试；运行需要 root"
+                            AlistInstallState.Missing -> "点此下载；运行需要 root（用于设置执行标签）"
+                            else -> "从 OpenList 官方 release 下载，保存在应用私有目录"
+                        },
+                        onClick = if (canInstall) {
+                            { installKernel() }
+                        } else {
+                            null
                         }
                     )
                 },
@@ -174,6 +240,19 @@ fun AlistScreen(
                         title = if (busy) "正在启动…" else "打开管理页面",
                         subtitle = "登录后在「存储」里添加夸克网盘、阿里云盘等",
                         onClick = { withServer(onOpenWeb) }
+                    )
+                }
+            )
+
+            CardGroup(
+                "网盘",
+                { shape ->
+                    SettingsCard(
+                        shape = shape,
+                        title = "夸克网盘快速登录",
+                        subtitle = "在应用内登录，自动获取 Cookie 并添加存储",
+                        hint = "不用再手动复制浏览器里的 Cookie",
+                        onClick = onOpenQuarkLogin
                     )
                 }
             )
@@ -243,6 +322,37 @@ fun AlistScreen(
             )
         }
     }
+
+    if (showDownloadDialog) {
+        AlertDialog(
+            onDismissRequest = { showDownloadDialog = false },
+            title = { Text("下载 AList 内核") },
+            text = {
+                Text(
+                    "内置 AList 的内核不再随安装包提供。首次使用需要从 OpenList 官方 release " +
+                            "下载约 60MB 的内核，校验后保存在应用私有目录。\n\n" +
+                            "AList 进程以应用身份运行；下载完成后需要 root 设置一次执行标签。"
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDownloadDialog = false
+                        enabled = true
+                        actionError = null
+                        alist.setEnabled(true)
+                    }
+                ) {
+                    Text("下载并启用")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDownloadDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
 }
 
 @Composable
@@ -283,10 +393,11 @@ private fun AlistHelpCard(shape: Shape) {
                 color = MaterialTheme.colorScheme.onSurface
             )
             val steps = listOf(
-                "1. 打开管理页面，用 admin / 上面的密码登录",
-                "2. 存储 → 添加 → 选夸克网盘、阿里云盘等，登录并设置挂载路径（如 /quark）",
-                "3. 回到这里点「新建 WebDAV 仓库」，在挂载路径下选择或新建一个文件夹作为仓库目录",
-                "4. 之后备份 / 恢复都会经过 AList 直接读写网盘"
+                "1. 启用服务：第一次会下载 AList 内核（约 60MB）",
+                "2. 点「夸克网盘快速登录」，在应用内登录后会自动添加存储",
+                "3. 点「新建 WebDAV 仓库」，在挂载路径下选择或新建一个文件夹作为仓库目录",
+                "4. 之后备份 / 恢复都会经过 AList 直接读写网盘",
+                "也可以在「打开管理页面」里手动登录 AList，添加其它网盘"
             )
             steps.forEach { step ->
                 Text(

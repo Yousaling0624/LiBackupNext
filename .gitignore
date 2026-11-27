@@ -18,10 +18,6 @@ local.properties
 /app/src/main/rust_bridge/target
 /app/src/main/jniLibs
 
-# 内置 OpenList（AList）预编译产物（buildSrc 任务下载）
-/app/src/main/openlistJniLibs
-/buildSrc/build
-
 # AI 工作目录（会话记忆 / 截图，不进版本库）
 /.workbuddy-ai/
 

@@ -471,6 +471,7 @@ fun AppListScreen(
             AppRoute.ALIST -> AlistScreen(
                 onBack = { route = AppRoute.LIST },
                 onOpenWeb = { route = AppRoute.ALIST_WEB },
+                onOpenQuarkLogin = { route = AppRoute.ALIST_QUARK },
                 onCreateRepo = { repo ->
                     repoPrefill = repo
                     route = AppRoute.REPOS
@@ -480,6 +481,14 @@ fun AppListScreen(
             AppRoute.ALIST_WEB -> AlistWebScreen(
                 url = alist.webUiUrl,
                 onBack = { route = AppRoute.ALIST }
+            )
+
+            AppRoute.ALIST_QUARK -> AlistQuarkScreen(
+                onBack = { route = AppRoute.ALIST },
+                onAdded = { path ->
+                    AppLog.toastOnMain("已添加夸克网盘存储：$path")
+                    route = AppRoute.ALIST
+                }
             )
 
             AppRoute.BATCH -> BackupBatchScreen(
@@ -781,6 +790,7 @@ private enum class AppRoute(val depth: Int) {
     OPEN_SOURCE(2),
     ALIST(1),
     ALIST_WEB(2),
+    ALIST_QUARK(2),
     BATCH(1),
     DETAIL(2)
 }

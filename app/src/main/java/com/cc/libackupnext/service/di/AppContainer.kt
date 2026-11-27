@@ -12,6 +12,7 @@ import com.cc.libackupnext.data.prefs.SharedPendingBatchStore
 import com.cc.libackupnext.data.prefs.SharedRepoPrefs
 import com.cc.libackupnext.data.prefs.SharedViewPrefs
 import com.cc.libackupnext.data.prefs.ViewPrefs
+import com.cc.libackupnext.service.alist.OpenListInstaller
 import com.cc.libackupnext.service.alist.OpenListServer
 import com.cc.libackupnext.service.gateway.AlistGateway
 import com.cc.libackupnext.service.rclone.RcloneClient
@@ -82,7 +83,7 @@ class AppContainer(private val app: Application) {
     private val alistPrefs: AlistPrefs by lazy { SharedAlistPrefs(app) }
 
     /** 内置 AList（OpenList）服务：只监听 127.0.0.1，供 WebDAV 仓库访问。 */
-    val alist: AlistGateway by lazy { OpenListServer(app, alistPrefs) }
+    val alist: AlistGateway by lazy { OpenListServer(app, alistPrefs, OpenListInstaller(app)) }
 
     // ==================== 仓库访问 ====================
 

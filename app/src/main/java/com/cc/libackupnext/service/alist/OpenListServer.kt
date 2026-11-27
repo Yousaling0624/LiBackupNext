@@ -6,11 +6,13 @@ import com.cc.libackupnext.data.prefs.AlistPrefs
 import com.cc.libackupnext.data.protocol.FIELD_HOST
 import com.cc.libackupnext.data.protocol.WebDavProtocol
 import com.cc.libackupnext.service.gateway.AlistGateway
+import com.cc.libackupnext.service.gateway.AlistInstallState
 import com.cc.libackupnext.service.gateway.AlistState
 import com.cc.libackupnext.util.AppLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -27,7 +29,7 @@ import java.net.URL
 import java.util.concurrent.TimeUnit
 
 /**
- * [AlistGateway] 的默认实现：把 APK 里的 OpenList 可执行文件拉起来，管它的生命周期。
+ * [AlistGateway] 的默认实现：把按需下载的 OpenList 可执行文件拉起来，管它的生命周期。
  *
  * 进程本身跑在**应用进程的普通 uid** 下，不是 root：
  * AList 只负责把网盘翻译成 WebDAV，不需要系统权限；需要 root 的备份 / 恢复仍然在
@@ -38,7 +40,8 @@ import java.util.concurrent.TimeUnit
  */
 internal class OpenListServer(
     private val context: Context,
-    private val prefs: AlistPrefs
+    private val prefs: AlistPrefs,
+    private val installer: OpenListInstaller
 ) : AlistGateway {
 
     private companion object {
@@ -62,6 +65,11 @@ internal class OpenListServer(
 
     private val _state = MutableStateFlow<AlistState>(AlistState.Stopped)
     override val state: StateFlow<AlistState> = _state.asStateFlow()
+
+    override val installState: StateFlow<AlistInstallState> get() = installer.state
+
+    /** 由开关触发的启动协程；关掉开关时要能取消还在下载内核的那一条。 */
+    private var startJob: Job? = null
 
     private var process: Process? = null
     private var logSink: LogSink? = null
@@ -97,6 +105,9 @@ internal class OpenListServer(
         if (enabled) {
             launchManagedStart()
         } else {
+            // 正在下载 / 解压内核也要能立刻停下，不能等下载完
+            startJob?.cancel()
+            startJob = null
             scope.launch { stop() }
         }
     }
@@ -110,10 +121,24 @@ internal class OpenListServer(
      * 再轮到这条 start。排队拿到锁后再看一次用户意图，已经关了就不启动。
      */
     private fun launchManagedStart() {
-        scope.launch { start(requireEnabled = true) }
+        // 已经在启动 / 下载了就不重复发起（重复下载 60MB 没有意义）
+        if (startJob?.isActive == true) return
+        startJob = scope.launch { start(requireEnabled = true) }
     }
 
     override suspend fun ensureStarted(): Result<Unit> = start()
+
+    override suspend fun ensureInstalled(): Result<Unit> {
+        val result = installer.ensureInstalled().map { }
+        // 用户本来就开着服务（开关 = 用户意图）：下载完顺手拉起来，不用再拨一次开关
+        if (result.isSuccess && prefs.enabled) launchManagedStart()
+        return result
+    }
+
+    override suspend fun addQuarkStorage(cookie: String): Result<String> {
+        ensureStarted().getOrElse { return Result.failure(it) }
+        return OpenListAdminApi(webUiUrl, password).upsertQuarkStorage(cookie)
+    }
 
     /**
      * 启动（幂等）：已在运行直接成功，否则等 /ping 就绪后返回。
@@ -122,14 +147,36 @@ internal class OpenListServer(
      * 这时不该把进程拉起来；页面上的「打开管理页面」是显式操作，不受开关限制。
      */
     suspend fun start(requireEnabled: Boolean = false): Result<Unit> = withContext(Dispatchers.IO) {
+        if (requireEnabled && !prefs.enabled) {
+            return@withContext Result.success(Unit)
+        }
+
+        // 已有一个在跑：可能还停在 Starting（上一个 start 还没走完），直接按运行中处理
+        process?.takeIf { it.isAlive }?.let {
+            if (_state.value !is AlistState.Running) _state.value = AlistState.Running(PORT)
+            return@withContext Result.success(Unit)
+        }
+
+        // 下载 / 校验内核可能要几分钟，不能占着 mutex：用户点关闭时要能立刻取消
+        val installed = installer.ensureInstalled()
+        if (installed.isFailure) {
+            val t = installed.exceptionOrNull() ?: IllegalStateException("AList 内核不可用")
+            if (t is CancellationException) throw t
+            _state.value = AlistState.Failed(t.message ?: "AList 内核不可用")
+            return@withContext Result.failure(t)
+        }
+        val binary = installed.getOrThrow()
+        if (requireEnabled && !prefs.enabled) {
+            return@withContext Result.success(Unit)
+        }
+
         mutex.withLock {
             if (requireEnabled && !prefs.enabled) {
                 return@withLock Result.success(Unit)
             }
 
             process?.takeIf { it.isAlive }?.let {
-                // 已有一个在跑：可能还停在 Starting（上一个 start 还没走完，
-                // 但 mutex 已经放开了才会走到这里，所以直接按运行中处理）
+                // 下载内核期间可能已经有另一条 start 把它拉起来了
                 if (_state.value !is AlistState.Running) _state.value = AlistState.Running(PORT)
                 return@withLock Result.success(Unit)
             }
@@ -140,9 +187,8 @@ internal class OpenListServer(
             logSink?.close()
             logSink = null
 
-            val binary = File(context.applicationInfo.nativeLibraryDir, "libopenlist.so")
             if (!binary.isFile) {
-                val message = "当前设备没有打包内置 AList（缺少 libopenlist.so）"
+                val message = "AList 内核文件不存在，请重新下载"
                 _state.value = AlistState.Failed(message)
                 return@withLock Result.failure(IllegalStateException(message))
             }
@@ -213,6 +259,9 @@ internal class OpenListServer(
     }
 
     override suspend fun stop() = withContext(Dispatchers.IO) {
+        // 内核还在下载 / 解压时也要能停：取消驱动它的 startJob（installer 会清理临时文件）
+        startJob?.cancel()
+        startJob = null
         // 先置位再排队：start 持有 mutex 等 45 秒就绪时，这里不用干等
         stopRequested = true
         mutex.withLock {
