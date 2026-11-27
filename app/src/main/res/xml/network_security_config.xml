@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    只为内置 AList 放行明文回环：服务只监听 127.0.0.1，
+    WebView 管理页面和「测试连接」都需要 http://127.0.0.1:5244。
+
+    其它域名仍按 targetSdk 的默认规则禁止明文，不受影响。
+-->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>

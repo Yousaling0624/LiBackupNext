@@ -17,6 +17,7 @@
 
 - **增量去重**：rustic 的内容寻址存储，重复数据只存一份，重复备份只写变化的部分
 - **多仓库**：本地 / WebDAV / SFTP / SMB
+- **内置 AList（OpenList）**：应用内直接启动 AList 服务，登录夸克网盘、阿里云盘等，再通过本机 WebDAV 备份；只监听 127.0.0.1，不会暴露到局域网
 - **批量操作**：一次备份 / 恢复 / 覆盖 / 删除多个目标，支持按版本变化筛选；中断后可以「继续未完成」续批
 - **多用户**：备份 / 恢复指定 Android 用户（工作资料、分身）；备份前 SIGSTOP 暂停应用，恢复前 force-stop
 - **应用操作**：强停、冻结 / 解冻、清空数据、卸载、开关 Wi-Fi
@@ -37,6 +38,8 @@
         │
   RusticClient     RcloneClient     AppManagerService 客户端
         │  AIDL：阻塞调用 + oneway 进度回调（大结果走共享内存）
+        │
+        │  主进程里另有内置 AList 子进程（OpenList，监听 127.0.0.1:5244）
         ▼
 :root 进程（三个独立绑定的 RootService）
   RusticServer     RcloneServer     AppManagerService.Service
@@ -83,6 +86,7 @@ cargo install cargo-ndk
 ```
 
 - `preBuild` 会自动跑 `buildRust`（`cargo ndk -P 30 -o jniLibs build --release --workspace`）和按 ABI 拆开的 `buildLibrclone_*`（`go build -buildmode=c-shared`）；`jniLibs/` 被 gitignore 忽略，首次克隆会自动重建，产物是 `librustic_bridge.so`、`librclone_bridge.so`、`librclone.so` 三个库。
+- 内置 AList 用上游预编译的 OpenList Android 包：`fetchOpenList_*` 会下载 `openlist-android-{arm64,amd64}.tar.gz`、校验 MD5 后解出 `libopenlist.so`（放在 `src/main/openlistJniLibs/<abi>/`，同样 gitignore）。版本和校验值在 `app/build.gradle.kts` 顶部，升级时一起改。`libopenlist.so` 是 Go 可执行文件，靠 `useLegacyPackaging` 解压到 nativeLibraryDir 后按路径 execve（Android 10+ 禁止从可写目录执行）；代价是 APK 体积会增加约 60MB。
 - `-PrustAbis` 默认 `arm64-v8a,x86_64`；debug 带 x86_64，release 的 `abiFilters` 只留 arm64-v8a。环境变量 `CARGO` / `GO` / `ANDROID_NDK_HOME` / `GOPROXY` 可覆盖工具路径。
 - `BuildConfig` 写入 `APP_VERSION`（更新检查用）以及从 Cargo.toml 读出的 `RUSTIC_CORE_VERSION` / `RUSTIC_BACKEND_VERSION`（设置页展示）。
 - `scripts/build-librclone.sh` 用于单独重编某个 ABI 排错，`scripts/dedupe-hardlinks.sh` 用于修复早期版本恢复时丢失的硬链接；`.github/workflows/release.yml` 打 tag 自动构建、签名并发 Release。
@@ -106,7 +110,9 @@ app/
     rustic_bridge/        JNI：快照 CRUD / prune / restore（rustic_core + rustic_backend）
     rclone_bridge/        JNI：目录浏览、serve restic 启停，dlopen librclone.so
   librclone/       Go 精简版 rclone（main.go + go.mod），编成 c-shared 库
+  src/main/openlistJniLibs/  内置 OpenList 预编译产物（gitignore，fetchOpenList_* 下载）
   src/main/jniLibs/  native 构建产物（gitignore）
+buildSrc/          构建期任务（下载 / 校验 / 解压 OpenList）
 hidden-api/        隐藏 API 的编译期 stub（compileOnly，不进 APK）
 scripts/           构建 / 修复脚本
 .github/workflows/ CI 发版
@@ -141,6 +147,7 @@ scripts/           构建 / 修复脚本
 |---|---|
 | [rustic_core](https://github.com/rustic-rs/rustic) / rustic_backend | 0.13.0 / 0.7.0（`rest` feature）：仓库格式与备份引擎，RestBackend 用来访问远程 |
 | [rclone](https://github.com/rclone/rclone) | v1.76.0（Go 1.26）：精简成进程内 RC 库，只留四个后端 + `serve restic` |
+| [OpenList](https://github.com/OpenListTeam/OpenList) | v4.2.10（AGPL-3.0）：内置 AList 内核，应用内启动，把夸克 / 阿里云盘等翻译成本机 WebDAV |
 | [libsu](https://github.com/topjohnwu/libsu) | 6.0.0：`RootService` 绑定与断线重连 |
 | [Refine](https://github.com/RikkaW/Refine) | 4.4.0 + `:hidden-api` stub：隐藏 API 访问 |
 | [rikkax.parcelablelist](https://github.com/RikkaW/ParcelableList) | 2.0.1：AIDL 传 Parcelable 列表 |

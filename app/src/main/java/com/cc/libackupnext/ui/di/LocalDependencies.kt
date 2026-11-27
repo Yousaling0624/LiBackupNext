@@ -5,6 +5,7 @@ import com.cc.libackupnext.data.prefs.BackupPrefs
 import com.cc.libackupnext.data.prefs.PendingBatchStore
 import com.cc.libackupnext.data.prefs.RepoDisplay
 import com.cc.libackupnext.data.prefs.ViewPrefs
+import com.cc.libackupnext.service.gateway.AlistGateway
 import com.cc.libackupnext.service.gateway.DeviceGateway
 import com.cc.libackupnext.service.gateway.DirectoryBrowser
 import com.cc.libackupnext.service.gateway.RepoAdmin
@@ -101,4 +102,9 @@ val LocalBackupPrefs = staticCompositionLocalOf<BackupPrefs> {
 /** 未完成批次缓存：列表页读写「上次没跑完的活」。 */
 val LocalPendingBatchStore = staticCompositionLocalOf<PendingBatchStore> {
     error("PendingBatchStore 未提供：请确认 AppRoot 里有 CompositionLocalProvider")
+}
+
+/** 内置 AList 服务：设置页看状态、AList 页启停 / 打开管理页面 / 预填 WebDAV 仓库。 */
+val LocalAlist = staticCompositionLocalOf<AlistGateway> {
+    error("AlistGateway 未提供：请确认 AppRoot 里有 CompositionLocalProvider")
 }

@@ -55,6 +55,7 @@ import com.cc.libackupnext.data.BackupTarget
 import com.cc.libackupnext.data.BatchOrigin
 import com.cc.libackupnext.data.FolderPickerLauncher
 import com.cc.libackupnext.data.MediaPath
+import com.cc.libackupnext.data.RemoteRepo
 import com.cc.libackupnext.service.target.TargetListing
 import com.cc.libackupnext.ui.AppBottomBar
 import com.cc.libackupnext.ui.AppTopBar
@@ -62,6 +63,7 @@ import com.cc.libackupnext.ui.HomeTab
 import com.cc.libackupnext.ui.MainViewModel
 import com.cc.libackupnext.ui.SortMenuExtra
 import com.cc.libackupnext.ui.component.countText
+import com.cc.libackupnext.ui.di.LocalAlist
 import com.cc.libackupnext.ui.di.LocalBackupTargets
 import com.cc.libackupnext.ui.di.LocalDeviceGateway
 import com.cc.libackupnext.ui.di.LocalPendingBatchStore
@@ -137,6 +139,10 @@ fun AppListScreen(
     // 仓库清单 / 当前仓库位置：初始化、切换、编辑、删除后自增，触发重读 RepoDisplay
     var repoRevision by rememberSaveable { mutableStateOf(0) }
     val savedRepos = remember(repoRevision) { repoDisplay.savedRepos }
+    // 从 AList 页跳过来时预填的 WebDAV 仓库表单；选中仓库目录后仍由用户手动初始化
+    var repoPrefill by remember { mutableStateOf<RemoteRepo?>(null) }
+    // AList 页 / 内嵌管理页面共用的服务入口
+    val alist = LocalAlist.current
     // 业务比较用逻辑标识，展示 / 复制用真实地址，两者别混
     val currentRepoLocation = remember(repoRevision) { repoDisplay.location }
     val currentRepoAddress = remember(repoRevision) { repoDisplay.currentAddress }
@@ -416,8 +422,12 @@ fun AppListScreen(
         route = AppRoute.LIST
     }
 
-    // 仓库列表 / 关于页：返回设置 tab
-    BackHandler(enabled = route == AppRoute.REPOS || route == AppRoute.ABOUT) {
+    // 仓库列表 / 关于页 / AList 页：返回设置 tab
+    BackHandler(
+        enabled = route == AppRoute.REPOS ||
+                route == AppRoute.ABOUT ||
+                route == AppRoute.ALIST
+    ) {
         route = AppRoute.LIST
     }
 
@@ -453,7 +463,23 @@ fun AppListScreen(
                 currentLocation = currentRepoLocation,
                 onBack = { route = AppRoute.LIST },
                 onOpenFolderPicker = onOpenFolderPicker,
-                onRepoChanged = ::onRepoChanged
+                onRepoChanged = ::onRepoChanged,
+                createPrefill = repoPrefill,
+                onPrefillConsumed = { repoPrefill = null }
+            )
+
+            AppRoute.ALIST -> AlistScreen(
+                onBack = { route = AppRoute.LIST },
+                onOpenWeb = { route = AppRoute.ALIST_WEB },
+                onCreateRepo = { repo ->
+                    repoPrefill = repo
+                    route = AppRoute.REPOS
+                }
+            )
+
+            AppRoute.ALIST_WEB -> AlistWebScreen(
+                url = alist.webUiUrl,
+                onBack = { route = AppRoute.ALIST }
             )
 
             AppRoute.BATCH -> BackupBatchScreen(
@@ -661,6 +687,7 @@ fun AppListScreen(
                                     viewModel.loadList(scrollToTop = false)
                                 },
                                 onOpenRepoList = { route = AppRoute.REPOS },
+                                onOpenAlist = { route = AppRoute.ALIST },
                                 onOpenAbout = { route = AppRoute.ABOUT }
                             )
 
@@ -752,6 +779,8 @@ private enum class AppRoute(val depth: Int) {
     REPOS(1),
     ABOUT(1),
     OPEN_SOURCE(2),
+    ALIST(1),
+    ALIST_WEB(2),
     BATCH(1),
     DETAIL(2)
 }

@@ -79,11 +79,15 @@ val openSourceGroups: List<OpenSourceGroup> = listOf(
         )
     ),
 
-    // ===== 远程后端（Go）：只列 rclone，go.mod 里的间接依赖不逐条展开 =====
+    // ===== 远程后端（Go）：只列直接内置的两个程序，go.mod 里的间接依赖不逐条展开 =====
     OpenSourceGroup(
         title = "远程后端 · Go",
         libs = listOf(
-            OpenSourceLib("rclone", MIT, "https://github.com/rclone/rclone")
+            OpenSourceLib("rclone", MIT, "https://github.com/rclone/rclone"),
+            OpenSourceLib(
+                "OpenList（内置 AList 网盘）", "GNU AGPL v3.0",
+                "https://github.com/OpenListTeam/OpenList"
+            )
         )
     ),
 

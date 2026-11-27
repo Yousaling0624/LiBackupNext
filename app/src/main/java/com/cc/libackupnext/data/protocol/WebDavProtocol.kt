@@ -16,8 +16,10 @@ object WebDavProtocol : RepoProtocol {
 
     override val auths: List<RepoAuthOption> = listOf(RepoAuthOption("password", "密码"))
 
-    private const val USER = "user"
-    private const val PASS = "password"
+    /** 凭据字段键：内置 AList 预填仓库表单时也复用这两个常量。 */
+    const val FIELD_USER = "user"
+    const val FIELD_PASS = "password"
+
     private const val INSECURE = "insecure"
 
     override fun fields(repo: RemoteRepo): List<RepoField> = listOf(
@@ -36,8 +38,8 @@ object WebDavProtocol : RepoProtocol {
             label = "允许不安全的服务",
             hint = "允许 http 明文连接，并跳过自签名 / 过期证书校验"
         ),
-        RepoField.Text(USER, "用户名", "用户名", required = true),
-        RepoField.Text(PASS, "服务密码", secret = true, required = true)
+        RepoField.Text(FIELD_USER, "用户名", "用户名", required = true),
+        RepoField.Text(FIELD_PASS, "服务密码", secret = true, required = true)
     )
 
     override fun rcloneOptions(repo: RemoteRepo): Map<String, String> {
@@ -48,8 +50,8 @@ object WebDavProtocol : RepoProtocol {
                 "url",
                 if (host.contains("://")) host else "${if (insecure) "http" else "https"}://$host"
             )
-            put("user", repo[USER])
-            put("pass", repo[PASS])
+            put("user", repo[FIELD_USER])
+            put("pass", repo[FIELD_PASS])
             // 只有打开时才下发；Rust 侧默认就是 false
             if (insecure) put(INSECURE, "true")
         }

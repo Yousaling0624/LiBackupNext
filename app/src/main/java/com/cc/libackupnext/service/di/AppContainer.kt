@@ -1,15 +1,19 @@
 package com.cc.libackupnext.service.di
 
 import android.app.Application
+import com.cc.libackupnext.data.prefs.AlistPrefs
 import com.cc.libackupnext.data.prefs.BackupPrefs
 import com.cc.libackupnext.data.prefs.PendingBatchStore
 import com.cc.libackupnext.data.prefs.RepoDisplay
 import com.cc.libackupnext.data.prefs.RepoPrefs
+import com.cc.libackupnext.data.prefs.SharedAlistPrefs
 import com.cc.libackupnext.data.prefs.SharedBackupPrefs
 import com.cc.libackupnext.data.prefs.SharedPendingBatchStore
 import com.cc.libackupnext.data.prefs.SharedRepoPrefs
 import com.cc.libackupnext.data.prefs.SharedViewPrefs
 import com.cc.libackupnext.data.prefs.ViewPrefs
+import com.cc.libackupnext.service.alist.OpenListServer
+import com.cc.libackupnext.service.gateway.AlistGateway
 import com.cc.libackupnext.service.rclone.RcloneClient
 import com.cc.libackupnext.service.gateway.DeviceGateway
 import com.cc.libackupnext.service.gateway.DirectoryBrowser
@@ -73,6 +77,12 @@ class AppContainer(private val app: Application) {
 
     /** 未完成批次缓存。 */
     val pendingBatch: PendingBatchStore by lazy { SharedPendingBatchStore(app) }
+
+    /** 内置 AList 的本地开关与密码。 */
+    private val alistPrefs: AlistPrefs by lazy { SharedAlistPrefs(app) }
+
+    /** 内置 AList（OpenList）服务：只监听 127.0.0.1，供 WebDAV 仓库访问。 */
+    val alist: AlistGateway by lazy { OpenListServer(app, alistPrefs) }
 
     // ==================== 仓库访问 ====================
 

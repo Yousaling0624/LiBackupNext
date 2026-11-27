@@ -46,6 +46,8 @@ import kotlinx.coroutines.launch
 fun RepoSetupDialog(
     /** null = 新增仓库；非 null = 编辑这条记录（表单预填它的数据）。 */
     editing: SavedRepo?,
+    /** 新增时预填的表单（AList 的 WebDAV 配置）；编辑时忽略。 */
+    initialForm: RemoteRepo? = null,
     onDismiss: () -> Unit,
     onOpenFolderPicker: (FolderPickerLauncher) -> Unit,
     /** 新增 / 编辑 / 删除结束后统一回调：外部关弹窗并刷新清单。 */
@@ -61,8 +63,8 @@ fun RepoSetupDialog(
 
     val isCurrent = editing != null && editing.location == repoDisplay.location
     var visible by remember { mutableStateOf(true) }
-    var dialogRepo by remember(editing) {
-        mutableStateOf(editing?.toForm() ?: RemoteRepo())
+    var dialogRepo by remember(editing, initialForm) {
+        mutableStateOf(editing?.toForm() ?: initialForm ?: RemoteRepo())
     }
     // 新增不预填默认密码；编辑仍带出记录里保存的真实密码（不是默认值）
     var dialogPassword by remember(editing) {

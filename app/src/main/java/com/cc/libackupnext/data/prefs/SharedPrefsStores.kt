@@ -59,6 +59,8 @@ private object Keys {
     const val COLOR_SPEC = "color_spec"
     const val VERBOSE_LOG = "verbose_log"
     const val PENDING_BATCH = "pending_batch"
+    const val ALIST_ENABLED = "alist_enabled"
+    const val ALIST_PASSWORD = "alist_password"
 
     const val EMPTY_OPTIONS = "{}"
     const val REMOTE_PREFIX = "remote:"
@@ -256,6 +258,19 @@ internal class SharedBackupPrefs(context: Context) : BackupPrefs {
     override fun clearPausedApps() {
         prefs.edit { remove(Keys.PAUSED_APPS) }
     }
+}
+
+internal class SharedAlistPrefs(context: Context) : AlistPrefs {
+
+    private val prefs = PrefsFile.of(context)
+
+    override var enabled: Boolean
+        get() = prefs.getBoolean(Keys.ALIST_ENABLED, false)
+        set(value) = prefs.edit { putBoolean(Keys.ALIST_ENABLED, value) }
+
+    override var password: String
+        get() = prefs.getString(Keys.ALIST_PASSWORD, "").orEmpty()
+        set(value) = prefs.edit { putString(Keys.ALIST_PASSWORD, value) }
 }
 
 internal class SharedPendingBatchStore(context: Context) : PendingBatchStore {

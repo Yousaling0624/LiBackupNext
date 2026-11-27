@@ -15,6 +15,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -24,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.unit.dp
 import com.cc.libackupnext.data.FolderPickerLauncher
+import com.cc.libackupnext.data.RemoteRepo
 import com.cc.libackupnext.data.SavedRepo
 import com.cc.libackupnext.ui.AppTopBar
 import com.cc.libackupnext.ui.component.AppDialog
@@ -35,8 +37,14 @@ import com.cc.libackupnext.ui.dialog.RepoSetupDialog
 import com.cc.libackupnext.util.AppLog
 import kotlinx.coroutines.launch
 
-/** null = 不显示弹窗；editing=null 是新增，非 null 是编辑这条记录。 */
-private data class RepoDialogTarget(val editing: SavedRepo?)
+/**
+ * null = 不显示弹窗；editing=null 是新增，非 null 是编辑这条记录。
+ * [initialForm] 只给新增用：从 AList 页跳过来时预填 WebDAV 地址 / 账号。
+ */
+private data class RepoDialogTarget(
+    val editing: SavedRepo?,
+    val initialForm: RemoteRepo? = null
+)
 
 /**
  * 已添加仓库的列表页：设置页「仓库地址」点进来。
@@ -49,6 +57,10 @@ fun RepoListScreen(
     onOpenFolderPicker: (FolderPickerLauncher) -> Unit,
     /** 新增 / 编辑 / 删除 / 切换后通知外层刷新清单、设置页地址和备份列表。 */
     onRepoChanged: () -> Unit,
+    /** 非空时自动打开新增弹窗并预填表单（从 AList 页的「新建 WebDAV 仓库」跳过来）。 */
+    createPrefill: RemoteRepo? = null,
+    /** 预填已消费：外层把值清掉，避免关掉弹窗后又被重新打开。 */
+    onPrefillConsumed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val scope = rememberCoroutineScope()
@@ -60,6 +72,15 @@ fun RepoListScreen(
     var dialogTarget by remember { mutableStateOf<RepoDialogTarget?>(null) }
     var switching by remember { mutableStateOf(false) }
     var switchError by remember { mutableStateOf<String?>(null) }
+
+    // AList 页跳过来：打开新增弹窗并预填，然后立刻消费掉预填值。
+    // 只认第一次非空值，关掉弹窗后 flow 不会再触发。
+    LaunchedEffect(createPrefill) {
+        if (createPrefill != null) {
+            dialogTarget = RepoDialogTarget(editing = null, initialForm = createPrefill)
+            onPrefillConsumed()
+        }
+    }
 
     /** 切换也走初始化入口：远程先测连接，校验失败不改当前仓库。 */
     fun switchTo(record: SavedRepo) {
@@ -130,6 +151,7 @@ fun RepoListScreen(
     dialogTarget?.let { target ->
         RepoSetupDialog(
             editing = target.editing,
+            initialForm = target.initialForm,
             onDismiss = { dialogTarget = null },
             onOpenFolderPicker = onOpenFolderPicker,
             onFinished = {

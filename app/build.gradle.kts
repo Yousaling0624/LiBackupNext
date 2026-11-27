@@ -1,3 +1,4 @@
+import com.cc.libackupnext.build.DownloadOpenListTask
 import java.util.Properties
 
 plugins {
@@ -6,6 +7,14 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
     alias(libs.plugins.hiddenApi)
 }
+
+// ==================== 内置 AList（OpenList）版本 ====================
+
+// 预编译包：https://github.com/OpenListTeam/OpenList/releases/tag/v$openListVersion
+// 升级时同步改这里和下面 openListAssetOf 里的 MD5（release 的 md5-android.txt）。
+// 为什么用预编译而不是源码构建：源码构建要先编前端 dist，CI 时间和维护成本都高；
+// 预编译包与官方发布一致，版本和校验值都钉死，升级是有意识的一步。
+val openListVersion = "4.2.10"
 
 // ==================== rustic 依赖版本 ====================
 
@@ -56,6 +65,8 @@ android {
         buildConfigField("String", "RUSTIC_BACKEND_VERSION", "\"$rusticBackendVersion\"")
         // 启动时检查更新用：GitHub release 的 tag_name 就是这个值
         buildConfigField("String", "APP_VERSION", "\"$appVersionName\"")
+        // AList 页展示内置 OpenList 的版本
+        buildConfigField("String", "OPENLIST_VERSION", "\"$openListVersion\"")
     }
 
     buildTypes {
@@ -89,6 +100,15 @@ android {
         buildConfig = true
     }
 
+    // 内置 OpenList 的预编译产物（fetchOpenList_* 下载到这里）。
+    // 单独一个目录而不是塞进 src/main/jniLibs：那边整体是 buildRust 的 outputs，
+    // 两个任务写同一棵目录会让 up-to-date 判断互相干扰。
+    sourceSets {
+        getByName("main") {
+            jniLibs.srcDir("src/main/openlistJniLibs")
+        }
+    }
+
     // 纯逻辑单测（Retention / OperationPlan / usecase）跑在 JVM 上，
     // 它们间接调用的 android.util.Log 需要返回默认值而不是抛「not mocked」
     testOptions {
@@ -103,8 +123,11 @@ android {
             excludes += "**/*.h"
             // librclone.so 是精简版 rclone 的 c-shared 库，librclone_bridge.so 会按
             // nativeLibraryDir 里的绝对路径 dlopen 它，所以这些 .so 都必须解压出来
-            // 压缩 APK 里的 .so（安装时解压），能省一大截体积
+            // 压缩 APK 里的 .so（安装时解压），能省一大截体积。
+            // libopenlist.so 是 Go 可执行文件（不是动态库），同样靠解压后才能 execve。
             useLegacyPackaging = true
+            // OpenList 已经是 strip 过的 Go 二进制，别让 AGP 再拿 llvm-strip 处理一遍
+            keepDebugSymbols += "**/libopenlist.so"
         }
         dex {
             useLegacyPackaging = true
@@ -309,6 +332,33 @@ val buildLibrclone = tasks.register("buildLibrclone") {
     dependsOn(librcloneTasks)
 }
 
+// ==================== 内置 OpenList（AList） ====================
+
+/**
+ * ABI -> (上游 release 的 GOARCH, md5-android.txt 里对应 tar.gz 的 MD5)。
+ *
+ * 版本和 MD5 一起钉死：升级时要同时改 `openListVersion` 和这里的值，
+ * 下载内容对不上会直接让构建失败，而不是悄悄打进一个不同的二进制。
+ */
+fun openListAssetOf(abi: String): Pair<String, String> = when (abi) {
+    "arm64-v8a" -> "arm64" to "12986ca60a8b561ea26b3f53cac738ed"
+    "x86_64" -> "amd64" to "1e50e78407d8d2789f3aae3f93bb99d9"
+    else -> error("OpenList 不支持的 ABI：$abi（rustAbis 只支持 arm64-v8a / x86_64）")
+}
+
+val openListTasks = rustAbis.map { abi ->
+    val (goArch, expectedMd5) = openListAssetOf(abi)
+    val out = layout.projectDirectory.file("src/main/openlistJniLibs/$abi/libopenlist.so")
+    tasks.register<DownloadOpenListTask>("fetchOpenList_${abi.replace('-', '_')}") {
+        group = "build"
+        description = "下载 $abi 的内置 OpenList（AList）v$openListVersion"
+        url = "https://github.com/OpenListTeam/OpenList/releases/download/" +
+                "v$openListVersion/openlist-android-$goArch.tar.gz"
+        md5 = expectedMd5
+        outputFile = out.asFile
+    }
+}
+
 tasks.named("preBuild").configure {
-    dependsOn(buildRust, buildLibrclone)
+    dependsOn(buildRust, buildLibrclone, openListTasks)
 }

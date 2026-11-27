@@ -35,6 +35,12 @@ class App: Application() {
         // 主题状态是应用级单例，依赖在这里注入一次（:root 进程不实例化 Application，不会走到）
         ThemeSettings.install(container.viewPrefs)
         DefaultScreenOnSetting.install(container.backupPrefs)
+
+        // 用户上次开着内置 AList 就自动拉起。只看主进程：:root 进程不需要这份服务，
+        // 也不该在这里再起一份（两个进程同时监听 5244 会打架）。
+        if (Application.getProcessName() == packageName) {
+            container.alist.startIfEnabled()
+        }
     }
 
 }

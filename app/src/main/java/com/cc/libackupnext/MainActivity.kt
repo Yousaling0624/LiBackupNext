@@ -37,6 +37,7 @@ import com.cc.libackupnext.service.update.UpdateChecker
 import com.cc.libackupnext.ui.HomeTab
 import com.cc.libackupnext.ui.WelcomeScreen
 import com.cc.libackupnext.ui.component.keepScreenOnWhen
+import com.cc.libackupnext.ui.di.LocalAlist
 import com.cc.libackupnext.ui.di.LocalBackupPrefs
 import com.cc.libackupnext.ui.di.LocalBackupTargets
 import com.cc.libackupnext.ui.di.LocalBackupUseCase
@@ -89,6 +90,7 @@ class MainActivity : ComponentActivity() {
                 LocalViewPrefs provides container.viewPrefs,
                 LocalBackupPrefs provides container.backupPrefs,
                 LocalPendingBatchStore provides container.pendingBatch,
+                LocalAlist provides container.alist,
             ) {
                 AppManagerTheme {
                     Surface(

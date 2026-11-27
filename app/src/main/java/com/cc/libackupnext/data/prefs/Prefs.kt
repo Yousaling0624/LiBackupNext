@@ -173,6 +173,23 @@ interface BackupPrefs : RestorePrefs {
 }
 
 /**
+ * 内置 AList（OpenList）服务的本地配置。
+ *
+ * [enabled] 表示用户是否希望它运行：开关一开就启动进程并记住，应用下次启动时自动拉起；
+ * 关掉就停进程。它和「当前进程是否活着」（service 层的运行态）是两回事，
+ * 放在这里只是为了跨重启保留用户意图。
+ *
+ * [password] 是我们生成的 admin 密码，同时作为 AList 网页登录和 WebDAV 的凭据。
+ * 只由 service 层读写 —— 页面展示也必须走 service 接口，别让 UI 直接拿凭据。
+ */
+interface AlistPrefs {
+
+    var enabled: Boolean
+
+    var password: String
+}
+
+/**
  * 未完成批次（跨应用重启保留）。
  *
  * 单独一个接口而不是塞进 [BackupPrefs]：它是**缓存**不是配置，

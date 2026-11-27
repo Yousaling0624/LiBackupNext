@@ -38,6 +38,7 @@ import com.cc.libackupnext.ui.PageContentPadding
 import com.cc.libackupnext.ui.component.AppDialog
 import com.cc.libackupnext.ui.component.CardGroup
 import com.cc.libackupnext.ui.component.SettingsCard
+import com.cc.libackupnext.ui.di.LocalAlist
 import com.cc.libackupnext.ui.di.LocalBackupPrefs
 import com.cc.libackupnext.ui.di.LocalRepoWriter
 import com.cc.libackupnext.ui.di.LocalViewPrefs
@@ -73,12 +74,17 @@ fun SettingsContent(
     onSettingChanged: () -> Unit = {},
     /** 打开已添加仓库列表页。 */
     onOpenRepoList: () -> Unit = {},
+    /** 打开内置 AList 管理页。 */
+    onOpenAlist: () -> Unit = {},
     /** 打开关于页。 */
     onOpenAbout: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboard.current
+    // 内置 AList：设置页只展示运行状态，点进去才管理
+    val alist = LocalAlist.current
+    val alistState by alist.state.collectAsState()
     // 整理仓库走接口：设置页只需要写能力
     val writer = LocalRepoWriter.current
     val backupPrefs = LocalBackupPrefs.current
@@ -176,6 +182,19 @@ fun SettingsContent(
                     titleColor = MaterialTheme.colorScheme.error,
                     subtitleColor = MaterialTheme.colorScheme.error.copy(alpha = 0.75f),
                     onClick = { if (!cleaning) openCleanConfirm() }
+                )
+            }
+        )
+
+        CardGroup(
+            "网盘",
+            { shape ->
+                SettingsCard(
+                    shape = shape,
+                    title = "AList 网盘",
+                    subtitle = alistState.describe(alist.port),
+                    hint = "内置服务：登录夸克 / 阿里云盘等，通过 WebDAV 备份",
+                    onClick = onOpenAlist
                 )
             }
         )
