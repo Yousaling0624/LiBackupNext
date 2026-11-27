@@ -113,7 +113,14 @@ internal class OpenListServer(
     }
 
     override fun startIfEnabled() {
-        if (prefs.enabled) launchManagedStart()
+        if (!prefs.enabled) return
+        // 内核按需下载：不在应用启动时偷偷拉 55MB，等用户进 AList 页面再下。
+        // 这里只提示状态，开关（用户意图）保持不动。
+        if (installer.state.value !is AlistInstallState.Ready) {
+            _state.value = AlistState.Failed("AList 内核未下载，请在 AList 页面下载")
+            return
+        }
+        launchManagedStart()
     }
 
     /**
@@ -121,7 +128,7 @@ internal class OpenListServer(
      * 再轮到这条 start。排队拿到锁后再看一次用户意图，已经关了就不启动。
      */
     private fun launchManagedStart() {
-        // 已经在启动 / 下载了就不重复发起（重复下载 60MB 没有意义）
+        // 已经在启动 / 下载了就不重复发起（重复下载 55MB 没有意义）
         if (startJob?.isActive == true) return
         startJob = scope.launch { start(requireEnabled = true) }
     }

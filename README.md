@@ -86,7 +86,7 @@ cargo install cargo-ndk
 ```
 
 - `preBuild` 会自动跑 `buildRust`（`cargo ndk -P 30 -o jniLibs build --release --workspace`）和按 ABI 拆开的 `buildLibrclone_*`（`go build -buildmode=c-shared`）；`jniLibs/` 被 gitignore 忽略，首次克隆会自动重建，产物是 `librustic_bridge.so`、`librclone_bridge.so`、`librclone.so` 三个库。
-- 内置 AList 的内核**不打进 APK**：应用第一次启用 AList 时，`OpenListInstaller` 从上游 release 下载 `openlist-android-{arm64,amd64}.tar.gz`、校验 MD5 后解出 `libopenlist.so`，放在应用私有目录（`noBackupFilesDir/openlist/bin/`）。版本在 `app/build.gradle.kts` 顶部的 `openListVersion`，下载地址和 MD5 在安装器里，升级时一起改。
+- 内置 AList 的内核**不打进 APK**：应用第一次启用 AList 时，`OpenListInstaller` 从上游 release 下载 `openlist-android-{arm64,amd64}.tar.gz`（约 55MB）、校验 MD5 后解出 `libopenlist.so`（约 165MB），放在应用私有目录（`noBackupFilesDir/openlist/bin/`）。版本在 `app/build.gradle.kts` 顶部的 `openListVersion`，下载地址和 MD5 在安装器里，升级时一起改。
 - Android 10+ 不允许应用从可写目录 execve，所以下载完成后用 root 执行一次 `chcon u:object_r:apk_data_file:s0`（进程仍以应用 uid 运行），每次启动前会重新打标签；运行内置 AList 需要 root。APK 因此不再带约 60MB 的内核，但首次启用需要联网下载。
 - 夸克快速登录在内嵌 WebView 里完成：登录成功后从 `CookieManager` 读到 `__pus` / `__puus`，校验有效后通过 AList 管理 API 添加或更新 Quark 存储；Cookie 不写日志。
 - `-PrustAbis` 默认 `arm64-v8a,x86_64`；debug 带 x86_64，release 的 `abiFilters` 只留 arm64-v8a。环境变量 `CARGO` / `GO` / `ANDROID_NDK_HOME` / `GOPROXY` 可覆盖工具路径。

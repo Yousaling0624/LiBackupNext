@@ -13,7 +13,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -21,7 +20,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -39,6 +37,7 @@ import com.cc.libackupnext.data.RemoteRepo
 import com.cc.libackupnext.service.gateway.AlistInstallState
 import com.cc.libackupnext.service.gateway.AlistState
 import com.cc.libackupnext.ui.AppTopBar
+import com.cc.libackupnext.ui.component.AppDialog
 import com.cc.libackupnext.ui.component.CardGroup
 import com.cc.libackupnext.ui.component.SettingsCard
 import com.cc.libackupnext.ui.di.LocalAlist
@@ -55,7 +54,7 @@ internal fun AlistState.describe(port: Int): String = when (this) {
 
 /** 内核安装状态的一句话。 */
 private fun AlistInstallState.describeKernel(): String = when (this) {
-    AlistInstallState.Missing -> "未下载 · 约 60MB"
+    AlistInstallState.Missing -> "未下载 · 下载约 55MB，安装后约 165MB"
     is AlistInstallState.Downloading -> {
         if (total > 0) {
             val percent = (downloaded * 100 / total).toInt()
@@ -190,7 +189,7 @@ fun AlistScreen(
                     SettingsCard(
                         shape = shape,
                         title = "内置 AList 服务",
-                        subtitle = when (val install = installState) {
+                        subtitle = when (installState) {
                             is AlistInstallState.Downloading -> "正在下载内核…"
                             AlistInstallState.Extracting -> "正在解压内核…"
                             is AlistInstallState.Failed -> "内核不可用"
@@ -324,32 +323,23 @@ fun AlistScreen(
     }
 
     if (showDownloadDialog) {
-        AlertDialog(
-            onDismissRequest = { showDownloadDialog = false },
-            title = { Text("下载 AList 内核") },
-            text = {
+        AppDialog(
+            onDismiss = { showDownloadDialog = false },
+            title = "下载 AList 内核",
+            confirmText = "下载并启用",
+            onConfirm = {
+                showDownloadDialog = false
+                enabled = true
+                actionError = null
+                alist.setEnabled(true)
+            },
+            content = {
                 Text(
                     "内置 AList 的内核不再随安装包提供。首次使用需要从 OpenList 官方 release " +
-                            "下载约 60MB 的内核，校验后保存在应用私有目录。\n\n" +
-                            "AList 进程以应用身份运行；下载完成后需要 root 设置一次执行标签。"
+                            "下载约 55MB 的压缩包，解压后约 165MB，校验后保存在应用私有目录。\n\n" +
+                            "AList 进程以应用身份运行；下载完成后需要 root 设置一次执行标签。",
+                    style = MaterialTheme.typography.bodyMedium
                 )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showDownloadDialog = false
-                        enabled = true
-                        actionError = null
-                        alist.setEnabled(true)
-                    }
-                ) {
-                    Text("下载并启用")
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showDownloadDialog = false }) {
-                    Text("取消")
-                }
             }
         )
     }
@@ -393,7 +383,7 @@ private fun AlistHelpCard(shape: Shape) {
                 color = MaterialTheme.colorScheme.onSurface
             )
             val steps = listOf(
-                "1. 启用服务：第一次会下载 AList 内核（约 60MB）",
+                "1. 启用服务：第一次会下载 AList 内核（约 55MB，安装后约 165MB）",
                 "2. 点「夸克网盘快速登录」，在应用内登录后会自动添加存储",
                 "3. 点「新建 WebDAV 仓库」，在挂载路径下选择或新建一个文件夹作为仓库目录",
                 "4. 之后备份 / 恢复都会经过 AList 直接读写网盘",

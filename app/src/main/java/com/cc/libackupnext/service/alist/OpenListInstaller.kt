@@ -34,8 +34,8 @@ import java.util.zip.GZIPInputStream
 /**
  * 按需下载并安装 OpenList 内核。
  *
- * APK 里不再打包 60MB 的 AList 二进制：第一次启用时从上游 release 下载 tar.gz、
- * 校验 MD5，解出可执行文件。
+ * APK 里不再打包 AList 二进制：第一次启用时从上游 release 下载 tar.gz
+ * （arm64 约 55MB，解压后约 165MB），校验 MD5 后解出可执行文件。
  *
  * Android 10+ 的 W^X 限制不允许 app 在可写目录里 execve；但 `apk_data_file`
  * 类型（APK 的 nativeLibraryDir 用的标签）是可执行的。所以下载完成后用 root
@@ -252,6 +252,8 @@ internal class OpenListInstaller(private val context: Context) {
                 }
             }
             return digest.digest().joinToString("") { "%02x".format(it) }
+        } catch (e: IOException) {
+            throw IOException("无法下载 AList 内核，请检查网络（GitHub 可能需要代理）", e)
         } finally {
             connection.disconnect()
         }

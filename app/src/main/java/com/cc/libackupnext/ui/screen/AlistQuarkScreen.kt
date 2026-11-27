@@ -248,9 +248,16 @@ fun AlistQuarkScreen(
                                     request: WebResourceRequest?
                                 ): Boolean {
                                     // 登录页里的「打开 App」用 quark:// 之类的 scheme：
-                                    // 留在本页面里，别跳出去把登录流程中断
-                                    val scheme = request?.url?.scheme?.lowercase()
-                                    return scheme != null && scheme != "http" && scheme != "https"
+                                    // 只拦主框架，别跳出去把登录流程中断；iframe 正常放行
+                                    val webRequest = request ?: return false
+                                    if (!webRequest.isForMainFrame) return false
+                                    val scheme = webRequest.url.scheme?.lowercase()
+                                    return scheme != null &&
+                                            scheme != "http" &&
+                                            scheme != "https" &&
+                                            scheme != "about" &&
+                                            scheme != "blob" &&
+                                            scheme != "data"
                                 }
                             }
                             webChromeClient = WebChromeClient()
