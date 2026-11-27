@@ -96,8 +96,9 @@ internal class OpenListAdminApi(
         val payload = JsonObject(storage + ("addition" to JsonPrimitive(mergedAddition.toString())))
         post("api/admin/storage/update", token, payload)
         if (existing.disabled) {
-            // UpdateStorage 对已停用的存储只落库、不加载；用户刚登录，顺手启用
-            get("api/admin/storage/enable?id=${existing.id}", token)
+            // UpdateStorage 对已停用的存储只落库、不加载；用户刚登录，顺手启用。
+            // 开启接口是 POST（不是 GET），query 里带 id
+            post("api/admin/storage/enable?id=${existing.id}", token, JsonObject(emptyMap()))
         }
         return existing.mountPath
     }
@@ -111,6 +112,9 @@ internal class OpenListAdminApi(
             put("order_direction", "asc")
             put("use_transcoding_address", false)
             put("only_list_video_file", false)
+            // 夸克下载链接直接 302 给客户端时容易因缺 Referer / UA 被拒；
+            // 和驱动 Init 的迁移保持一致，走 AList 自己的代理
+            put("AdditionVersion", 2)
         }
         val payload = buildJsonObject {
             put("mount_path", mount)
@@ -124,8 +128,8 @@ internal class OpenListAdminApi(
             put("order_by", "name")
             put("order_direction", "asc")
             put("extract_folder", "")
-            put("web_proxy", false)
-            put("webdav_policy", "302_redirect")
+            put("web_proxy", true)
+            put("webdav_policy", "native_proxy")
             put("proxy_range", false)
             put("down_proxy_url", "")
             put("disable_proxy_sign", false)
