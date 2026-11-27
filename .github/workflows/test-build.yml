@@ -1,0 +1,214 @@
+name: Test Build
+
+# 推 test 分支就构建一个可安装的测试包，更新到固定的 test-latest prerelease。
+# 和 release.yml 的区别：
+#   - debug 包（arm64 + x86_64，真机和模拟器都能装），不做 minify
+#   - 版本号取上游最高 tag，保证能覆盖安装官方版本
+#   - 产物挂在滚动 tag 上，不进 /releases/latest，不影响应用内更新检查
+on:
+  push:
+    branches: [test]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: test-build-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NDK_VERSION: "30.0.16248370"
+  JAVA_VERSION: "21"
+  # 海外 runner 走官方代理更稳（和 release.yml 一致）
+  GOPROXY: "https://proxy.golang.org,direct"
+  # fork 自己没有 tag，版本基准从上游取
+  UPSTREAM: "CCCC-L/LiBackupNext"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 检出代码
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 安装 JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+
+      - name: 安装 Go（编译 librclone.so）
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: app/librclone/go.mod
+          cache-dependency-path: app/librclone/go.sum
+
+      - name: 安装 Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: "platform-tools"
+          accept-android-sdk-licenses: true
+
+      - name: 接受 SDK 许可
+        run: yes | sdkmanager --licenses > /dev/null || true
+
+      - name: 安装 NDK 与平台
+        run: |
+          set -e
+          sdkmanager --install "ndk;$NDK_VERSION" > /dev/null
+
+          # compileSdk 37 的平台包在不同 SDK 版本里叫 android-37 或 android-37.0，
+          # 两个都试一遍，装不上就让 AGP 自己下载
+          sdkmanager --install "platforms;android-37" > /dev/null 2>&1 \
+            || sdkmanager --install "platforms;android-37.0" > /dev/null 2>&1 \
+            || true
+
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/$NDK_VERSION" >> "$GITHUB_ENV"
+
+      - name: 安装 Rust 工具链（debug 同时编 arm64 + x86_64）
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - name: 缓存 Rust 产物
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app/src/main/rust_bridge
+
+      - name: 安装 cargo-ndk
+        run: cargo install cargo-ndk
+
+      - name: 配置 Gradle 缓存
+        uses: gradle/actions/setup-gradle@v4
+
+      # AGP 在每个全新 runner 上都会生成一把新的 debug keystore，签名不同，
+      # 新包就装不上旧包。把 keystore 放进 Actions 缓存复用同一个：
+      # 测试包之间可以覆盖安装。缓存 7 天不用会被清掉，清掉后签名会变，
+      # 需要先卸载旧包再装。
+      - name: 复用 debug 签名密钥
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: li-backup-test-debug-keystore-v1
+
+      - name: 计算版本号
+        id: ver
+        run: |
+          set -euo pipefail
+
+          # fork 里没有 tag：从上游所有 tag 里取最高的正式版本（1.6.2 / v1.6.2 都认）
+          BASE=$(git ls-remote --tags "https://github.com/$UPSTREAM.git" \
+            | sed 's#.*refs/tags/##; s/\^{}$//' \
+            | grep -E '^v?[0-9]+\.[0-9]+\.[0-9]+$' \
+            | sed 's/^v//' \
+            | sort -V \
+            | tail -1 || true)
+          BASE=${BASE:-1.6.2}
+
+          # versionCode 和 release.yml 同一套规则：major*10000 + minor*100 + patch。
+          # 用「最高 tag」而不是「最新 release」：已经打 tag 但还没发版的包也能盖过
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$BASE"
+          CODE=$(( 10#$MAJOR * 10000 + 10#$MINOR * 100 + 10#$PATCH ))
+          SHA=$(git rev-parse --short=8 HEAD)
+          NAME="${BASE}-test.${SHA}"
+
+          echo "base=$BASE" >> "$GITHUB_OUTPUT"
+          echo "code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "版本 $NAME（versionCode=$CODE）"
+
+      - name: 打包 debug（arm64 + x86_64）
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleDebug \
+            -PrustAbis=arm64-v8a,x86_64 \
+            -PversionName=${{ steps.ver.outputs.name }} \
+            -PversionCode=${{ steps.ver.outputs.code }} \
+            --no-daemon --stacktrace
+
+      - name: 签名
+        id: sign
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        run: |
+          set -e
+          IN=app/build/outputs/apk/debug/app-debug.apk
+          OUT=LiBackupNext-test.apk
+          APKSIGNER=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            # fork 里配了和上游一样的签名 secrets：换成正式签名，
+            # 可以直接覆盖安装官方版本，配置和数据都保留
+            echo "$KEYSTORE_BASE64" | base64 -d > /tmp/release.keystore
+            "$APKSIGNER" sign \
+              --ks /tmp/release.keystore \
+              --ks-pass "pass:$KEYSTORE_PASSWORD" \
+              --key-pass "pass:$KEY_PASSWORD" \
+              --ks-key-alias "$KEY_ALIAS" \
+              --out "$OUT" "$IN"
+            echo "signed=release" >> "$GITHUB_OUTPUT"
+          else
+            # 没配签名 secrets：AGP 已经用 debug keystore 签过，直接改名
+            cp "$IN" "$OUT"
+            echo "signed=debug" >> "$GITHUB_OUTPUT"
+            echo "::warning::未配置签名 secrets，测试包是 debug 签名，装不上官方版本（需先卸载）"
+          fi
+
+          "$APKSIGNER" verify --print-certs "$OUT"
+          sha256sum "$OUT" | tee "$OUT.sha256"
+          ls -lh "$OUT"
+
+      - name: 生成 Release 说明
+        run: |
+          {
+            echo "> 这是 \`test\` 分支提交 \`${{ steps.ver.outputs.sha }}\` 的自动构建，**不是正式版**。"
+            echo
+            echo "| | |"
+            echo "|---|---|"
+            echo "| 版本 | \`${{ steps.ver.outputs.name }}\` |"
+            echo "| versionCode | ${{ steps.ver.outputs.code }} |"
+            if [ "${{ steps.sign.outputs.signed }}" = "release" ]; then
+              echo "| 签名 | 正式签名 |"
+            else
+              echo "| 签名 | debug 签名 |"
+            fi
+            echo
+            echo "## 本次提交"
+            echo
+            git log -8 --no-merges --pretty=format:'- `%h` %s'
+            echo
+            echo
+            echo "## 安装说明"
+            echo
+            if [ "${{ steps.sign.outputs.signed }}" = "release" ]; then
+              echo "- 和正式版使用同一个签名，直接安装即可覆盖升级，配置和仓库都保留。"
+            else
+              echo "- 测试包是 debug 签名：如果手机上装的是**正式版**，会因为签名不同安装失败，需要先卸载旧版（应用里的仓库配置会丢，磁盘上的备份数据不受影响）。"
+              echo "- 之前装过测试包的话可以直接覆盖；超过 7 天没有构建导致缓存被清后签名会变，也要先卸载。"
+              echo "- 想要正式签名：在 fork 的 Settings → Secrets and variables → Actions 里加上和上游相同的 \`KEYSTORE_BASE64\` / \`KEYSTORE_PASSWORD\` / \`KEY_ALIAS\` / \`KEY_PASSWORD\`，下次构建会自动使用。"
+            fi
+            echo "- versionCode 按上游最高 tag 计算，不低于官方最新版本，以后可以直接装官方新版本。"
+            echo "- 启动时如果弹出「发现新版本」，在设置里关掉「启动时检查更新」即可；测试包本身比它新。"
+          } > test-body.md
+          cat test-body.md
+
+      - name: 发布 / 更新 test-latest
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: test-latest
+          name: 测试版 ${{ steps.ver.outputs.name }}
+          body_path: test-body.md
+          files: |
+            LiBackupNext-test.apk
+            LiBackupNext-test.apk.sha256
+          prerelease: true
+          make_latest: "false"
+          overwrite_files: true
