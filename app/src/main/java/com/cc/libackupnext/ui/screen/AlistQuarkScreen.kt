@@ -374,7 +374,7 @@ private fun FailedBanner(message: String, onRetry: () -> Unit) {
                 }
             }
             Text(
-                text = "如果提示登录已失效，请在下方页面重新登录后再重试",
+                text = "登录失效时请在下方重新登录；root 或网络问题处理后点重试",
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onErrorContainer,
                 modifier = Modifier.padding(top = 4.dp)

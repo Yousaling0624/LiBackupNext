@@ -315,7 +315,7 @@ fun AlistScreen(
                     SettingsCard(
                         shape = shape,
                         title = "OpenList ${BuildConfig.OPENLIST_VERSION}",
-                        subtitle = "内置的 AList 内核，AGPL-3.0 · github.com/OpenListTeam/OpenList"
+                        subtitle = "按需下载的 AList 内核，AGPL-3.0 · github.com/OpenListTeam/OpenList"
                     )
                 }
             )
