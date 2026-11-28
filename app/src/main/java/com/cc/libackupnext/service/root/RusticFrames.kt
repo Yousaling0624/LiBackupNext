@@ -6,8 +6,7 @@ import java.nio.ByteBuffer
  * 主进程与 `:root` 之间的共享内存帧协议（rustic / rclone 共用）。
  *
  * 两边各映射同一块匿名共享内存，谁也不用序列化整块 buffer，只读写自己那一段。
- * 帧格式是「大端 i32 长度 + UTF-8 JSON」，必须和 Rust 侧一致，改动要同步
- * `rustic_server` / `rclone_bridge` 的解析代码。
+ * 帧格式是「大端 i32 长度 + UTF-8 JSON」，必须和 native 侧（app/native）一致。
  *
  * 每个通道有自己的名字和容量，两块内存互不相干，同名不会互相干扰。
  */
@@ -32,7 +31,7 @@ internal val RUSTIC_CHANNEL = NativeChannel(RUSTIC_SHARED_MEMORY_NAME, RUSTIC_BU
 internal val RCLONE_CHANNEL = NativeChannel("libackup-rclone", RUSTIC_BUFFER_SIZE)
 
 // ==================== 进度区（只有 rustic 用） ====================
-// 布局：4 字节计数器 + N 个 256 字节的槽位；Rust 侧每产生一条进度就写一格并自增。
+// 布局：4 字节计数器 + N 个 256 字节的槽位；native 侧每产生一条进度就写一格并自增。
 
 internal const val PROGRESS_OFFSET = 512 * 1024
 internal const val PROGRESS_COUNTER_SIZE = 4
@@ -43,7 +42,7 @@ internal const val PROGRESS_SLOT_COUNT =
 /**
  * 把一段 JSON 写进 [buffer] 的 [offset] 处。
  *
- * 前 4 字节是大端长度，后面是 UTF-8 正文 —— ByteBuffer 默认大端，Rust 侧按大端解析。
+ * 前 4 字节是大端长度，后面是 UTF-8 正文 —— ByteBuffer 默认大端，native 侧按大端解析。
  */
 internal fun writeFrameAt(buffer: ByteBuffer, offset: Int, json: String) {
     val bytes = json.toByteArray(Charsets.UTF_8)

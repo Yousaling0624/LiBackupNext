@@ -7,7 +7,7 @@ import kotlinx.coroutines.CancellationException
 /**
  * 仓库调用的错误归一化：收敛成「一句话 + 可判定的断连」。
  *
- * 只有断连类原因才说「连不上」：原因由 Rust 侧给，不按「仓库是不是远程」猜，
+ * 只有断连类原因才说「连不上」：原因由 native 侧给，不按「仓库是不是远程」猜，
  * 否则密码错、仓库缺件都会被说成网络问题。依赖全部构造注入，方便单独测。
  *
  * @param isRemote 决定断连时要不要停掉 rclone serve

@@ -10,9 +10,9 @@ import kotlinx.serialization.Serializable
 /**
  * rustic 通道的所有 JSON 结构。
  *
- * 字段名与 `rustic_bridge/src/lib.rs` 里的 serde 结构体一一对应，一个字都不能改：
- * 请求由 Rust 的 `Deserialize` 解析，响应由 Rust 的 `Serialize` 生成。
- * 没有 `#[serde(default)]` 的 Rust 字段在这里不设 Kotlin 默认值，保证一定会被写出。
+ * 字段名与 `app/native/engine/protocol.go` 里的 JSON 结构一一对应，一个字都不能改：
+ * 请求由 Go 的 `encoding/json` 解析，响应也由它生成。
+ * 协议里的必填项在 Kotlin 侧不设默认值，保证一定会被写出。
  */
 
 /** 任意请求里取出透传的操作 id（主进程 / root 两侧日志串成一条链）。 */
@@ -20,7 +20,7 @@ import kotlinx.serialization.Serializable
 data class OperationEnvelope(val op: String = "")
 
 /**
- * Rust 侧 BridgeResponse：`{"ok":true}` 或 `{"ok":false,"error":"...","reason":"password"}`。
+ * native 侧 BridgeResponse：`{"ok":true}` 或 `{"ok":false,"error":"...","reason":"password"}`。
  *
  * [reason] 是 [com.cc.libackupnext.data.FailureReason] 的 wire 值；缺省表示底层
  * 也给不出结论，主进程只能拿原文兜底。
@@ -33,7 +33,7 @@ data class OkResponse(
     val reason: String? = null
 )
 
-// ==================== 主进程 -> root / Rust 的请求 ====================
+// ==================== 主进程 -> root / native 的请求 ====================
 
 @Serializable
 data class ListSnapshotsRequest(@SerialName("package_name") val packageName: String = "")
@@ -132,9 +132,9 @@ data class RestoreSnapshotsRequest(
 @Serializable
 data class RestoreKindItem(val kind: String, val id: String)
 
-// ==================== root -> Rust 的请求 ====================
+// ==================== root -> native 的请求 ====================
 
-/** Rust 的 BackupRequest / BackupItem。 */
+/** native 的 BackupRequest / BackupItem。 */
 @Serializable
 data class RusticBackupRequest(
     val items: List<BackupItemDto>,
@@ -160,11 +160,11 @@ data class BackupItemDto(
      * 规则见 [com.cc.libackupnext.service.root.ignoreInodeFor]。
      */
     @SerialName("ignore_inode") val ignoreInode: Boolean = false,
-    /** Rust 的 BackupItem 没有这个字段（serde 忽略未知键），只给 Kotlin 侧标记用。 */
+    /** native 的 BackupItem 没有这个字段（Go 侧忽略未知键），只给 Kotlin 侧标记用。 */
     val system: Boolean? = null
 )
 
-/** Rust 的 RestoreRequest / RestoreItem（单快照解包）。 */
+/** native 的 RestoreRequest / RestoreItem（单快照解包）。 */
 @Serializable
 data class RestoreTreeRequest(val items: List<RestoreTreeItem>)
 
@@ -173,13 +173,13 @@ data class RestoreTreeItem(
     val id: String,
     val dest: String,
     val delete: Boolean = false,
-    /** 快照类型（apk / user / data …）。Rust 侧用它给字节进度帧标 stage。 */
+    /** 快照类型（apk / user / data …）。native 侧用它给字节进度帧标 stage。 */
     val stage: String = ""
 )
 
-// ==================== Rust -> 主进程的响应 ====================
+// ==================== native -> 主进程的响应 ====================
 
-/** Rust 的 SnapshotInfo。 */
+/** native 的 SnapshotInfo。 */
 @Serializable
 data class SnapshotDto(
     val id: String = "",
@@ -198,7 +198,7 @@ data class ListSnapshotsResponse(
     val reason: String? = null
 )
 
-/** Rust 的 OverviewSnapshot。 */
+/** native 的 OverviewSnapshot。 */
 @Serializable
 data class OverviewSnapshotDto(
     val id: String = "",
@@ -206,7 +206,7 @@ data class OverviewSnapshotDto(
     val size: Long = 0
 )
 
-/** Rust 的 PackageOverview。 */
+/** native 的 PackageOverview。 */
 @Serializable
 data class PackageOverviewDto(
     @SerialName("package") val packageName: String = "",

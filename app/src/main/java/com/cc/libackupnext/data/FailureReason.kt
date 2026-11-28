@@ -3,7 +3,7 @@ package com.cc.libackupnext.data
 /**
  * 失败原因 + 它给用户的那句话。
  *
- * [wire] 是跨进程的稳定标识：Rust 回传的是它的子集，[REPO_INCOMPLETE] 由主进程判定；
+ * [wire] 是跨进程的稳定标识：native 回传的是它的子集，[REPO_INCOMPLETE] 由主进程判定；
  * [text] 是全项目唯一的失败文案。这里只有数据 —— 归因在懂那个后端的那一层，
  * 排版与未知兜底在 `BackendMessage`。
  *

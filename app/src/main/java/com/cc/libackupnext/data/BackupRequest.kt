@@ -41,7 +41,7 @@ data class BackupSnapshot(
 )
 
 /**
- * 一个包的备份概况（Rust 侧 `overview` 命令的返回）。
+ * 一个包的备份概况（native 侧 `overview` 命令的返回）。
  *
  * @param snapshots 最近一次备份包含的快照（带 id，删除 / 覆盖 / 恢复要用）
  * @param hasApk 有没有 apk 备份；没有的包不会出现在「只在备份里」的应用列表

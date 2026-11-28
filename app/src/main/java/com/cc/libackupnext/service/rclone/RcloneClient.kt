@@ -26,8 +26,7 @@ import com.cc.libackupnext.util.AppLog
 /**
  * 主进程侧的 rclone 业务入口：目录浏览 / 新建文件夹，以及远程 restic 服务的地址。
  *
- * UI 只把 [RemoteRepo] 或本地路径交给这里，不接触 librclone.so 路径、inline 配置
- * 和帧协议。远程仓库的 URL 由 [ensureServe] 临时取回，不写进 RepoPrefs。
+ * UI 只把 [RemoteRepo] 或本地路径交给这里，不接触 rclone inline 配置和帧协议。远程仓库的 URL 由 [ensureServe] 临时取回，不写进 RepoPrefs。
  */
 object RcloneClient : DirectoryBrowser {
 
@@ -87,7 +86,6 @@ object RcloneClient : DirectoryBrowser {
     ): Result<List<String>> = withContext(Dispatchers.IO) {
         runCatching {
             val request = ListDirsRequest(
-                lib = RemoteBackend.libraryPath(),
                 fs = fs,
                 path = path,
                 create = create,
@@ -153,7 +151,6 @@ object RcloneClient : DirectoryBrowser {
         val result = runCatching {
             val fs = RemoteBackend.serveFs(repo)
             val request = EnsureServeRequest(
-                lib = RemoteBackend.libraryPath(),
                 fs = fs,
                 key = "${repo.location}|$fs"
             )

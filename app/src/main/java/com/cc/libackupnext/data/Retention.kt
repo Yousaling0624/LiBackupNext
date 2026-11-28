@@ -25,7 +25,7 @@ object Retention {
      * 只读视图，构造时算好 [covered] / [ids]，调用方不需要知道 label / tag 怎么解析。
      */
     data class Row(
-        /** 分组键：tag 里的时间戳，解析不出来退回快照时间（与 Rust 侧 backup_stamp 一致）。 */
+        /** 分组键：tag 里的时间戳，解析不出来退回快照时间（与 native 侧 backup_stamp 一致）。 */
         val stamp: Long,
         val snapshots: List<BackupSnapshot>
     ) {

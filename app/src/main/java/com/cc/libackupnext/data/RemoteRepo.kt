@@ -34,7 +34,7 @@ data class RemoteRepo(
     /** 开关字段统一存 "true" / 缺失。 */
     fun flag(field: String): Boolean = values[field] == "true"
 
-    /** 本地直接是目录路径；远程用逻辑标识，Rust 侧据此起 restic 服务。 */
+    /** 本地直接是目录路径；远程用逻辑标识，native 侧据此起 restic 服务。 */
     val location: String
         get() = if (protocol.isLocal) path else "remote:$id:${path.trimStart('/')}"
 

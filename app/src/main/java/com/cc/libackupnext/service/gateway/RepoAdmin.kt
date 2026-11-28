@@ -18,7 +18,7 @@ interface RepoAdmin {
      * 候选值只随这一次请求下传，不写全局配置；失败时配置保持原样，无需回滚。
      *
      * @param path 本地文件系统路径，或 [RemoteRepo.location]
-     * @param options rustic_backend 的后端选项 JSON；本地传 "{}"
+     * @param options 备份引擎的后端选项 JSON；本地传 "{}"
      * @param remote 远程服务配置；非空时同步进已保存的远程仓库
      * @param switching 切换已有仓库：本地目录必须已有 config，避免误建空库
      */

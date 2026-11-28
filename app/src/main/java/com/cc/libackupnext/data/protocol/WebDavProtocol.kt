@@ -5,7 +5,7 @@ import com.cc.libackupnext.data.RemoteRepo
 /**
  * WebDAV：一个 URL 就是服务地址，只有密码登录。
  *
- * [INSECURE] 是本项目自定义的键：Rust 侧会把它从 inline 配置里剥离，
+ * [INSECURE] 是本项目自定义的键：native 侧会把它从 inline 配置里剥离，
  * 转成 rclone RC 顶层的 no_check_certificate；rclone 的 webdav 后端本身没有这个 option。
  */
 object WebDavProtocol : RepoProtocol {
@@ -52,7 +52,7 @@ object WebDavProtocol : RepoProtocol {
             )
             put("user", repo[FIELD_USER])
             put("pass", repo[FIELD_PASS])
-            // 只有打开时才下发；Rust 侧默认就是 false
+            // 只有打开时才下发；native 侧默认就是 false
             if (insecure) put(INSECURE, "true")
         }
     }

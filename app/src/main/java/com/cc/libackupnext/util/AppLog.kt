@@ -564,8 +564,8 @@ object AppLog {
         }.getOrDefault(-1L)).append('\n')
         append("构建类型: ").append(if (BuildConfig.DEBUG) "debug" else "release").append('\n')
         append("包名: ").append(appContext.packageName).append('\n')
-        append("rustic_core: ").append(BuildConfig.RUSTIC_CORE_VERSION).append('\n')
-        append("rustic_backend: ").append(BuildConfig.RUSTIC_BACKEND_VERSION).append('\n')
+        append("restic: ").append(BuildConfig.RESTIC_VERSION).append('\n')
+        append("rclone: ").append(BuildConfig.RCLONE_VERSION).append('\n')
         // 远程 location 本身不含凭据，但也别把服务地址整条写进导出包
         append("仓库路径: ").append(
             runCatching { repoProvider()?.redactedLocation.orEmpty() }.getOrDefault("")

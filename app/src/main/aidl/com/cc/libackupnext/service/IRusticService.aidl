@@ -10,20 +10,20 @@ interface IRusticService {
    * 注入仓库地址、密码和后端选项（业务命令唯一的凭据来源）。
    *
    * 主进程在每次绑定（含 root 服务重启后的重连）时调一次，初始化成功 / 改密码 /
-   * 清配置时再调。Rust 侧留一份类级副本，root 侧 Kotlin 不保存密码；
+   * 清配置时再调。native 侧留一份类级副本，root 侧 Kotlin 不保存密码；
    * 之后所有业务命令的请求 JSON 都不再带凭据。传空串表示清空凭据。
    *
    * path 既可以是本地文件系统路径，也可以是逻辑仓库标识（remote:<id>:<path>）。
-   * options 是 JSON 对象字符串：remote: 前缀由 Rust 侧解释（从 rest_url 换成
-   * rest:<url>，URL 由 IRcloneService.ensureServe 临时取回），其余透传给
-   * rustic_backend 的 BackendOptions.options；本地传 "{}" 即可。
+   * options 是 JSON 对象字符串：remote: 前缀由 native 侧解释（从 rest_url 换成
+   * rest:<url>，URL 由 IRcloneService.ensureServe 临时取回），其余作为
+   * 备份引擎的 BackendOptions.options 透传；本地传 "{}" 即可。
    */
   void setRepo(String path, String password, String options);
 
   /**
    * 建库或打开仓库。结构判定由主进程做：先调 [repoLayout]，再决定 forceInit。
    *
-   * 凭据只用于本次校验，不写入 Rust 侧全局配置；失败什么都不改。
+   * 凭据只用于本次校验，不写入 native 侧全局配置；失败什么都不改。
    *
    * @param forceInit true = 直接建库，false = 只打开（失败原样返回）
    * @return 成功返回空字符串；失败返回含 error / reason 的响应 JSON

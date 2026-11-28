@@ -18,7 +18,7 @@ import java.io.File
  * 把备份请求（options）翻译成 rustic 的请求结构。
  *
  * 顺便把要进快照的源文件写好：图标、权限 / appops / 白名单、apk 路径。
- * 真正序列化成 JSON 交给 Rust 的动作在 [com.cc.libackupnext.service.RusticServer]。
+ * 真正序列化成 JSON 交给 native 的动作在 [com.cc.libackupnext.service.RusticServer]。
  */
 
 /**
@@ -175,7 +175,7 @@ internal class RusticRequestBuilder(
             )
         }
 
-        // 即使某个来源暂时不存在也要带上，Rust 侧会回报「跳过」
+        // 即使某个来源暂时不存在也要带上，native 侧会回报「跳过」
         if (options.apk) {
             val installDir = apkPaths(packageName)
                 .firstOrNull()

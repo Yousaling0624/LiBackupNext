@@ -91,7 +91,7 @@ internal class RusticRestoreSupport(
      *   解到 [target] 的父目录正好落在 [target]，所以 [dest] 默认取父目录；
      * - 导出图标这类单文件快照：解包目录本身就是目标，[dest] 和 [target] 传同一个路径。
      *
-     * @param stage 这一步的快照类型（apk / user / data …）。Rust 侧用它给字节进度帧标 stage，
+     * @param stage 这一步的快照类型（apk / user / data …）。native 侧用它给字节进度帧标 stage，
      *   不传的话进度条不知道该挂到哪一步上。
      * @param delete 恢复后删掉 [dest] 里快照没有的文件。**里面还有别的东西时绝不能开**
      * @param parentContext 用父目录的 SELinux 上下文（外部存储必须 true）

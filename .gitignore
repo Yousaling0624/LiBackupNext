@@ -14,8 +14,7 @@
 .cxx
 local.properties
 
-# Rust
-/app/src/main/rust_bridge/target
+# native（Go c-shared 产物）
 /app/src/main/jniLibs
 
 # AI 工作目录（会话记忆 / 截图，不进版本库）

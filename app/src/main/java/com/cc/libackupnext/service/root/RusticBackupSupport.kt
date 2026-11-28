@@ -22,7 +22,7 @@ internal class RusticBackupSupport(private val context: Context) {
      *
      * 用目录而不是单文件是为了彩信 —— 附件是独立文件、流复制进去，多大都不占内存。
      * 一个目标可能有多个 item（短信目标下有 sms / mms 两个），各自一个目录。
-     * 导出失败时把 item 标成跳过 —— Rust 侧看到空 sources 会自己跳。
+     * 导出失败时把 item 标成跳过 —— native 侧看到空 sources 会自己跳。
      */
     fun prepareSystemItems(request: RusticBackupRequest): RusticBackupRequest {
         val items = request.items.map { item: BackupItemDto ->

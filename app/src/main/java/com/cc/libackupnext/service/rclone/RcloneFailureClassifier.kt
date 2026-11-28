@@ -18,7 +18,7 @@ internal object RcloneFailureClassifier {
         "couldn't connect", "connection refused",
         "no such host", "no route to host", "connection reset"
     )
-    /** 含中文「超时」：rclone_bridge 自己的 serve/start 超时也走这条。 */
+    /** 含中文「超时」：native 侧 serve/start 超时也走这条。 */
     private val TIMEOUT_HINTS = listOf("timeout", "deadline exceeded", "超时")
 
     fun classify(raw: String): FailureReason? {

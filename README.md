@@ -1,6 +1,6 @@
 # 锂备份 · LiBackupNext
 
-一个基于 [rustic](https://github.com/rustic-rs/rustic) 的 Android 应用与数据备份工具。
+一个基于 [restic](https://github.com/restic/restic)、兼容 rustic 仓库格式的 Android 应用与数据备份工具。
 需要 **root**，支持整应用备份、批量操作、多用户和增量去重；仓库可以放在本地目录，
 也可以放在 WebDAV / SFTP / SMB 远程服务上。
 
@@ -15,7 +15,7 @@
 
 **仓库与操作**
 
-- **增量去重**：rustic 的内容寻址存储，重复数据只存一份，重复备份只写变化的部分
+- **增量去重**：restic 的内容寻址存储，重复数据只存一份，重复备份只写变化的部分
 - **多仓库**：本地 / WebDAV / SFTP / SMB
 - **内置 AList（OpenList）**：应用内直接启动 AList 服务，登录夸克网盘、阿里云盘等，再通过本机 WebDAV 备份；只监听 127.0.0.1，不会暴露到局域网。内核不随安装包提供，首次启用时按需下载；夸克支持应用内快速登录，不用手动复制 Cookie
 - **批量操作**：一次备份 / 恢复 / 覆盖 / 删除多个目标，支持按版本变化筛选；中断后可以「继续未完成」续批
@@ -45,13 +45,11 @@
   RusticServer     RcloneServer     AppManagerService.Service
         │ JNI            │ JNI              │ 隐藏 API
         ▼                ▼                 ▼
-  librustic_bridge.so  librclone_bridge.so   PackageManager / ActivityManager ...
-        │                │ dlopen
-        │                ▼
-        │          librclone.so（Go 版精简 rclone，进程内 RC：列目录 / serve restic）
-        ▼                │
+  libackupnext_native.so（Go c-shared：restic + 进程内 rclone）  PackageManager / ActivityManager ...
+        │                │
+        ▼                ▼
   本地仓库目录       serve restic：127.0.0.1 随机端口 + token（连 WebDAV / SFTP / SMB）
-     rustic_core + rustic_backend（rest feature，远程时用 rest_url）
+     restic（本地 / rest 后端，远程时用 rest_url）
 ```
 
 ## 环境要求
@@ -62,16 +60,11 @@
 | root | Magisk、KernelSU、APatch |
 | JDK | 21 |
 | Android SDK / NDK | NDK `30.0.16248370` |
-| Rust | stable + `aarch64-linux-android`；cargo-ndk 任意近期版本 |
-| Go | 1.26（`GOTOOLCHAIN=auto` 可自动下载），用于编译 `librclone.so` |
+| Go | 1.26（`GOTOOLCHAIN=auto` 可自动下载），编译唯一的 JNI 库 `libackupnext_native.so` |
 
 ## 构建
 
 ```bash
-# 首次：装 Rust target 和 cargo-ndk
-rustup target add aarch64-linux-android x86_64-linux-android
-cargo install cargo-ndk
-
 # debug 包（arm64 + x86_64，模拟器也能跑）
 ./gradlew :app:assembleDebug
 
@@ -79,20 +72,20 @@ cargo install cargo-ndk
 ./gradlew :app:assembleRelease
 
 # 只编 arm64 的 native 库，编译时间减半
-./gradlew :app:assembleRelease -PrustAbis=arm64-v8a
+./gradlew :app:assembleRelease -PnativeAbis=arm64-v8a
 
 # 打版本号（默认 versionName=1.0.0 / versionCode=1）
 ./gradlew :app:assembleRelease -PversionName=1.2.3 -PversionCode=10203
 ```
 
-- `preBuild` 会自动跑 `buildRust`（`cargo ndk -P 30 -o jniLibs build --release --workspace`）和按 ABI 拆开的 `buildLibrclone_*`（`go build -buildmode=c-shared`）；`jniLibs/` 被 gitignore 忽略，首次克隆会自动重建，产物是 `librustic_bridge.so`、`librclone_bridge.so`、`librclone.so` 三个库。
+- `preBuild` 会自动跑按 ABI 拆开的 `buildNative_*`（`go build -buildmode=c-shared`，NDK clang + `GOOS=android`）；`jniLibs/` 被 gitignore 忽略，首次克隆会自动重建，产物只有一个 `libackupnext_native.so`，restic 与 rclone 都编在里面。
 - 内置 AList 的内核**不打进 APK**：应用第一次启用 AList 时，`OpenListInstaller` 从上游 release 下载 `openlist-android-{arm64,amd64}.tar.gz`（约 55MB）、校验 MD5 后解出 `libopenlist.so`（约 165MB），放在应用私有目录（`noBackupFilesDir/openlist/bin/`）。版本在 `app/build.gradle.kts` 顶部的 `openListVersion`，下载地址和 MD5 在安装器里，升级时一起改。
 - Android 10+ 不允许应用从可写目录 execve，所以下载完成后用 root 执行一次 `chcon u:object_r:apk_data_file:s0`（进程仍以应用 uid 运行），每次启动前会重新打标签；运行内置 AList 需要 root。APK 因此不再带约 60MB 的内核，但首次启用需要联网下载。
 - 夸克快速登录在内嵌 WebView 里完成：登录成功后从 `CookieManager` 读到 `__pus` / `__puus`，校验有效后通过 AList 管理 API 添加或更新 Quark 存储；Cookie 不写日志。
-- `-PrustAbis` 默认 `arm64-v8a,x86_64`；debug 带 x86_64，release 的 `abiFilters` 只留 arm64-v8a。环境变量 `CARGO` / `GO` / `ANDROID_NDK_HOME` / `GOPROXY` 可覆盖工具路径。
-- `BuildConfig` 写入 `APP_VERSION`（更新检查用）以及从 Cargo.toml 读出的 `RUSTIC_CORE_VERSION` / `RUSTIC_BACKEND_VERSION`（设置页展示）。
-- `scripts/build-librclone.sh` 用于单独重编某个 ABI 排错，`scripts/dedupe-hardlinks.sh` 用于修复早期版本恢复时丢失的硬链接；`.github/workflows/release.yml` 打 tag 自动构建、签名并发 Release。
-- **体积优化**：release 用 fat LTO + `opt-level="s"` + `panic=abort` + strip，Go 侧 `-trimpath -ldflags="-s -w"`，rclone 只注册 `local/webdav/sftp/smb` 与 `serve restic`（29MB → 约 19MB）；APK 排除多余的 `.so` / `.h`，`useLegacyPackaging` 压缩 so 与 dex，资源裁剪但不混淆。
+- `-PnativeAbis` 默认 `arm64-v8a,x86_64`；debug 带 x86_64，release 的 `abiFilters` 只留 arm64-v8a。环境变量 `GO` / `ANDROID_NDK_HOME` / `GOPROXY` 可覆盖工具路径。
+- `BuildConfig` 写入 `APP_VERSION`（更新检查用）以及从 `app/native/go.mod` 读出的 `RESTIC_VERSION` / `RCLONE_VERSION`（设置页展示）。
+- `scripts/build-native.sh` 用于单独重编某个 ABI 排错，`scripts/dedupe-hardlinks.sh` 用于修复早期版本恢复时丢失的硬链接；`.github/workflows/release.yml` 打 tag 自动构建、签名并发 Release。
+- **体积优化**：Go 侧 `-trimpath -ldflags="-s -w"`，rclone 只注册 `local / webdav / sftp / smb` 四个后端与 `serve restic`；APK 排除 `.h`，`useLegacyPackaging` 压缩 so 与 dex，资源裁剪但不混淆。
 
 ## 仓库结构
 
@@ -108,17 +101,17 @@ app/
     util/          AppLog / LogReport / BackupNotifier / RepoPath
   src/main/aidl/   IRusticService / IRcloneService / IAppManagerService /
                    IBackupProgressCallback
-  src/main/rust_bridge/   Rust virtual workspace
-    rustic_bridge/        JNI：快照 CRUD / prune / restore（rustic_core + rustic_backend）
-    rclone_bridge/        JNI：目录浏览、serve restic 启停，dlopen librclone.so
-  librclone/       Go 精简版 rclone（main.go + go.mod），编成 c-shared 库
+  native/          Go module，编成唯一的 c-shared JNI 库
+    engine/        仓库 / 备份 / 恢复 / 查询 / prune（restic）
+    jni.go         RusticServer / RcloneServer 的 JNI 入口与共享内存帧
+    rclone.go      进程内 rclone RC：列目录 / serve restic / 传输统计
   src/main/jniLibs/  native 构建产物（gitignore）
 hidden-api/        隐藏 API 的编译期 stub（compileOnly，不进 APK）
 scripts/           构建 / 修复脚本
 .github/workflows/ CI 发版
 ```
 
-`RemoteBackend.kt` 是唯一拼 `librclone.so` 路径与 rclone inline 配置的地方；
+`RemoteBackend.kt` 是唯一拼 rclone inline 配置的地方；
 目录选择（本地 + 远程）统一走 `FolderPickerDialog`，本地同样复用 rclone 的 `local` 后端，
 在 `:root` 进程里列目录因此不需要存储权限。
 
@@ -138,15 +131,15 @@ scripts/           构建 / 修复脚本
 | （附带） | `icon` | 应用图标，一个包一份，不参与分组 |
 
 同一次备份的快照共用一条 tag：`应用名|版本|用户名|时间戳`，靠时间戳把它们归成一组。
-拼成一条是因为 rustic 的 tags 是 `BTreeSet`，拆开会被排序打乱；图标快照的 tag 只有包名。
+拼成一条是因为快照的 tags 是排序去重的集合，拆开会被排序打乱；图标快照的 tag 只有包名。
 `apk` 带着 obb 和权限、`user` 带着 `user_de` 一起备份；仓库里出现未知类型时容错跳过，不报错。
 
 ## 依赖
 
 | 组件 | 版本 / 用途 |
 |---|---|
-| [rustic_core](https://github.com/rustic-rs/rustic) / rustic_backend | 0.13.0 / 0.7.0（`rest` feature）：仓库格式与备份引擎，RestBackend 用来访问远程 |
-| [rclone](https://github.com/rclone/rclone) | v1.76.0（Go 1.26）：精简成进程内 RC 库，只留四个后端 + `serve restic` |
+| [restic](https://github.com/restic/restic) | 0.18.1：仓库格式与备份引擎，本地 / rest 后端 |
+| [rclone](https://github.com/rclone/rclone) | v1.76.0（Go 1.26）：编进同一个 native 库，进程内 RC 列目录 + `serve restic` |
 | [OpenList](https://github.com/OpenListTeam/OpenList) | v4.2.10（AGPL-3.0）：内置 AList 内核，首次启用时下载，应用内启动，把夸克 / 阿里云盘等翻译成本机 WebDAV |
 | [libsu](https://github.com/topjohnwu/libsu) | 6.0.0：`RootService` 绑定与断线重连 |
 | [Refine](https://github.com/RikkaW/Refine) | 4.4.0 + `:hidden-api` stub：隐藏 API 访问 |

@@ -45,7 +45,7 @@ data class BackupProgress(
         const val STATE_TRANSFER = "transfer"
 
         /**
-         * 中断帧：Rust 侧判出传输层错误的那一刻就写进来，不必等 `nativeBackup` 返回。
+         * 中断帧：native 侧判出传输层错误的那一刻就写进来，不必等 `nativeBackup` 返回。
          * [reason] 是 wire；收到之后后续进度帧全部丢弃，条冻结在判定时的位置。
          */
         const val STATE_INTERRUPTED = "interrupted"

@@ -186,7 +186,7 @@ internal class RusticAdminGateway(
                 )
             }
             if (remote != null) syncRemoteRepos(remote)
-            // 成功才让下一次 service() 把新凭据注入到 root / Rust 侧
+            // 成功才让下一次 service() 把新凭据注入到 root / native 侧
             invalidateCredentials()
         }
     }

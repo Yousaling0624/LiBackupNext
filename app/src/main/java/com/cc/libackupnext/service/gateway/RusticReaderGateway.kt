@@ -58,7 +58,7 @@ internal class RusticReaderGateway(
             Result.success(response.packages.mapNotNull { item ->
                 val packageName = item.packageName
                 if (packageName.isBlank()) return@mapNotNull null
-                // 同一次备份里 tag / 时间 / 备注都一样，Rust 侧只回传一份
+                // 同一次备份里 tag / 时间 / 备注都一样，native 侧只回传一份
                 val description = item.description?.takeIf { it.isNotBlank() }
                 RepoOverview(
                     packageName = packageName,

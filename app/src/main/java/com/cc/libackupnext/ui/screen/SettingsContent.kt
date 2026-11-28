@@ -142,14 +142,14 @@ fun SettingsContent(
             .padding(PageContentPadding)
     ) {
         CardGroup(
-            "Rustic",
-            // rustic 依赖版本：只展示，不可点击（值来自 Cargo.toml）
+            "备份引擎",
+            // 备份引擎依赖版本：只展示，不可点击（值来自 app/native/go.mod）
             { shape ->
                 SettingsCard(
                     shape = shape,
-                    title = "Rustic 版本",
-                    subtitle = "core ${BuildConfig.RUSTIC_CORE_VERSION}" +
-                            "  ·  backend ${BuildConfig.RUSTIC_BACKEND_VERSION}"
+                    title = "备份引擎版本",
+                    subtitle = "restic ${BuildConfig.RESTIC_VERSION}" +
+                            "  ·  rclone ${BuildConfig.RCLONE_VERSION}"
                 )
             },
             { shape ->

@@ -45,10 +45,10 @@ private data class RestoreSpec(val dir: String, val gid: Int, val dirMode: Strin
  * 把结果整理成 UI 能渲染的模型。
  * 这里只管「把 JSON 丢进共享内存、调 native、把结果 JSON 拿回来」。
  *
- * 与 Rust 的交互走 SharedMemory：
+ * 与 native（Go）的交互走 SharedMemory：
  * ```
- * [0, 64KB)      请求 / 响应帧
- * [64KB, 128KB)  备份进度帧
+ * [0, 512KB)      请求 / 响应帧
+ * [512KB, 576KB)  备份 / 恢复进度帧
  * ```
  * 帧格式是「大端 i32 长度 + UTF-8 JSON」。
  */
@@ -115,11 +115,11 @@ object RusticServer {
     /** 设置 rustic 的本地缓存目录（root 服务启动时调一次），空串表示关闭缓存。 */
     private external fun nativeSetCacheDir(path: String): Int
 
-    /** 告诉 Rust panic hook 往哪个目录写 rust-panic.txt（panic=abort 前留痕）。 */
+    /** 告诉 native 层往哪个目录写 rust-panic.txt（进程崩溃前留痕，沿用旧文件名）。 */
     private external fun nativeSetLogDir(path: String): Int
 
     /**
-     * 把仓库地址、密码和后端选项写进 Rust 侧的静态凭据，顺便清掉三个仓库缓存。
+     * 把仓库地址、密码和后端选项写进 native 侧的静态凭据，顺便清掉仓库缓存。
      *
      * 这是业务命令唯一的凭据来源：root 侧 Kotlin 不留副本，业务请求的 JSON
      * 都不带 path / password。initRepo 例外，它自带候选凭据只用于本次校验。
@@ -164,14 +164,14 @@ object RusticServer {
         ): String = runQueryNative(request, native, nativeError, failText)
 
         fun initialize() {
-            nativeError = runCatching { loadRusticBridge() }
+            nativeError = runCatching { loadNativeBridge() }
                 .exceptionOrNull()
                 ?.let { t ->
-                    AppLog.e(TAG, "load librustic_bridge.so failed", t)
-                    "无法加载 rustic 本地库：${t.message ?: t.javaClass.simpleName}"
+                    AppLog.e(TAG, "load libackupnext_native.so failed", t)
+                    "无法加载备份本地库：${t.message ?: t.javaClass.simpleName}"
                 }
 
-            // 缓存目录 + Rust panic 的落盘目录，都在 root 服务启动时设一次
+            // 缓存目录 + native 崩溃留痕目录，都在 root 服务启动时设一次
             if (nativeError == null) {
                 runCatching {
                     val cacheDir = File(context.cacheDir, "rustic")
@@ -187,7 +187,7 @@ object RusticServer {
             }
         }
 
-        /** 主进程在绑定 / 初始化成功 / 改密码 / 清配置时调一次，凭据只进 Rust 静态配置。 */
+        /** 主进程在绑定 / 初始化成功 / 改密码 / 清配置时调一次，凭据只进 native 静态配置。 */
         override fun setRepo(path: String, password: String, options: String) {
             if (nativeError != null) return
             runCatching { nativeSetRepo(path, password, options) }

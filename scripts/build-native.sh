@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# 手动编译精简版 librclone（c-shared）。Gradle 的 buildLibrclone_* 任务已经会按
-# rustAbis 自动编各 ABI，这个脚本只是排错 / 单独重编时用。
+# 手动编译 libackupnext_native.so（Go，c-shared）。Gradle 的 buildNative_* 任务
+# 已经会按 nativeAbis 自动编各 ABI，这个脚本只是排错 / 单独重编时用。
 #
-# 用法： ./scripts/build-librclone.sh [arm64-v8a|x86_64]
+# 用法： ./scripts/build-native.sh [arm64-v8a|x86_64]
 # 默认 arm64-v8a；debug 模拟器要 x86_64 就传 `x86_64`。
 #
-# c-shared 产物必须 GOOS=android + CGO_ENABLED=1：产物是真正的 .so，
-# 只依赖 bionic，由 :root 进程按 nativeLibraryDir 绝对路径 dlopen 后调 RC。
+# c-shared 产物必须 GOOS=android + CGO_ENABLED=1：restic 与 rclone 都编进这一个
+# .so，由 :root 进程 System.loadLibrary 直接加载，不再有第二个 rclone 库。
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-SRC="$ROOT/app/librclone"
+SRC="$ROOT/app/native"
 API=31
 
 ABI="${1:-arm64-v8a}"
@@ -57,9 +57,9 @@ export CC
 mkdir -p "$OUT"
 cd "$SRC"
 go build -buildmode=c-shared -trimpath -ldflags="-s -w" \
-    -o "$OUT/librclone.so" .
+    -o "$OUT/libackupnext_native.so" .
 # go build 会顺带生成头文件，不要留在 jniLibs 里
-rm -f "$OUT/librclone.h"
+rm -f "$OUT/libackupnext_native.h"
 
-echo "librclone ($ABI) built:"
-ls -lh "$OUT/librclone.so"
+echo "libackupnext_native ($ABI) built:"
+ls -lh "$OUT/libackupnext_native.so"

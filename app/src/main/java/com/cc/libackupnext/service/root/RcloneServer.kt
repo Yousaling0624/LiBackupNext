@@ -14,9 +14,8 @@ import java.nio.ByteBuffer
 /**
  * root 侧的 rclone 服务：目录浏览 / 建目录，以及远程 restic 服务的启停。
  *
- * 和 [RusticServer] 同在 :root 进程，但各自独立绑定、各加载各的 JNI 库
- * （librclone_bridge.so 与 librustic_bridge.so）。rustic 那边只管快照与仓库，
- * 不再碰 librclone.so 的路径或 inline 配置。
+ * 和 [RusticServer] 同在 :root 进程，但各自独立绑定，共用同一个 JNI 库
+ * （libackupnext_native.so）。rclone 直接在进程内运行，不再有单独的 librclone.so。
  *
  * 帧协议和 rustic 同一套，只是通道名不同 —— 传 [RCLONE_CHANNEL]，[runQueryNative]
  * 自己映射，这里不用管缓冲区。
@@ -30,7 +29,7 @@ object RcloneServer {
     private external fun nativeStopServe(buffer: ByteBuffer): Int
     private external fun nativeTransferStats(buffer: ByteBuffer): Int
 
-    /** 告诉 Rust panic hook 往哪个目录写 rust-panic.txt。 */
+    /** 告诉 native 层往哪个目录写 rust-panic.txt（沿用旧文件名）。 */
     private external fun nativeSetLogDir(path: String): Int
 
     class Service : RootBinderService() {
@@ -42,11 +41,11 @@ object RcloneServer {
         private var nativeError: String? = null
 
         fun initialize() {
-            nativeError = runCatching { loadRcloneBridge() }
+            nativeError = runCatching { loadNativeBridge() }
                 .exceptionOrNull()
                 ?.let { t ->
-                    AppLog.e(TAG, "load librclone_bridge.so failed", t)
-                    "无法加载 rclone 本地库：${t.message ?: t.javaClass.simpleName}"
+                    AppLog.e(TAG, "load libackupnext_native.so failed", t)
+                    "无法加载远程后端本地库：${t.message ?: t.javaClass.simpleName}"
                 }
             if (nativeError == null) {
                 runCatching {
